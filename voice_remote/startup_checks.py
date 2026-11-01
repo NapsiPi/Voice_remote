@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Startup checks that run before the voice remote starts.
 
 The Pi talks you through four checks, and you answer each question by saying yes or no:
@@ -21,12 +20,12 @@ from pathlib import Path
 import numpy as np
 import sounddevice as sd
 
-from sanity_test import (
+from .speech import (
     BLOCK_MS, WHISPER_RATE, add_common_args, build_audio, calibrate, normalise,
     record_utterance, resample, rms, to_wav_bytes,
 )
-from tv_link import UI_VOLUME_DOWN, UI_VOLUME_UP
-from webos_link import connect_webos
+from .tv_link import UI_VOLUME_DOWN, UI_VOLUME_UP
+from .webos_link import connect_webos
 
 YES = {"yes", "yeah", "yep", "yup", "yah", "yeh", "correct", "right", "sure", "ok", "okay"}
 NO = {"no", "nope", "nah", "wrong", "incorrect"}

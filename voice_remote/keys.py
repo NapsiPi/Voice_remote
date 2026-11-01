@@ -1,11 +1,10 @@
-#!/usr/bin/env python3
 """Light test: a keyboard TV remote, no speech recognition.
 
 Checks the WM8960 HAT is detected and the TV answers over HDMI-CEC and webOS, then
 turns key presses into TV remote commands. Power goes over HDMI-CEC; everything else
 goes over webOS on the network (the LG TV ignores CEC keys, BUG-002), falling back
 to CEC when webOS isn't available. Needs only Python 3 (standard library),
-alsa-utils and v4l-utils (setup_test_env.sh --light), so it runs on 32-bit Pi OS.
+alsa-utils and v4l-utils (./setup.sh --light), so it runs on 32-bit Pi OS.
 Run it on the Pi's own keyboard or over SSH.
 """
 
@@ -19,12 +18,12 @@ import termios
 import tty
 from pathlib import Path
 
-from tv_link import (
+from .tv_link import (
     UI_CHANNEL_DOWN, UI_CHANNEL_UP, UI_DOWN, UI_EXIT, UI_LEFT, UI_MUTE, UI_NUMBER_0, UI_PAUSE,
     UI_PLAY, UI_RIGHT, UI_ROOT_MENU, UI_SELECT, UI_UP, UI_VOLUME_DOWN, UI_VOLUME_UP,
     Cec, alsa_card, connected_hdmi_ports,
 )
-from webos_link import connect_webos
+from .webos_link import connect_webos
 
 # key -> (label, CEC user-control code, webOS action)
 KEYMAP = {
@@ -76,7 +75,7 @@ def check_tv(cec_debug):
     cec = Cec(ports[0], debug=cec_debug)
     if not cec.available:
         print(f"  FAIL  TV on HDMI {ports[0]}, but CEC is unavailable ({cec.dev} or cec-ctl missing; "
-              "run setup_test_env.sh --light)")
+              "run ./setup.sh --light)")
         return None
     power, name = cec.power_status(), cec.tv_name()
     if power is None and name is None:
