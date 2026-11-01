@@ -11,10 +11,32 @@ A Raspberry Pi 5 voice remote for an LG webOS TV (UJ635V). The WM8960 Audio HAT'
 - With every change, update the matching sections of `README.md`: usage, requirements, system packages, pip installations, build commands.
 - Record design decisions in `ARCHITECTURE.md`.
 - When the owner flags a point as needing a developer note, add a row to the table in `DEVELOPER_NOTES.md`. After each bug-fix branch, add a fix summary there (problem and how it was fixed).
-- `SKILLS.md` lists the roles used on the project. The primary role is embedded C developer.
-- Commit changes in small steps with clear messages.
-- Releases are annotated tags (`vX.Y.Z`), published as GitHub releases, with notes in `RELEASE.md`. Bugs found on the Pi go in `BUGS.md` (`BUG-NNN`, the version found in, status Open, then Fixed (awaiting Pi verification), then Verified). Fix them on a `bugfix/...` branch, reference the bug IDs in commit messages, and merge only after Pi verification.
-- Feature work for the next release goes on `dev` and is merged to `main` afterwards.
+- `SKILLS.md` lists the roles used on the project: embedded C developer (primary), Python application developer, speech/audio processing, TV integration/networking, and hardware test/release engineering. Add a role when the work needs one that isn't listed.
+- Commit changes in small steps with clear messages. Reference bug IDs (`BUG-NNN`) in fix commits.
+
+## Git branching and releases
+
+| Branch | Purpose | Merged into |
+|--------|---------|-------------|
+| `main` | Stable, verified releases only. Everybody uses it. Release tags `vX.Y.Z` live here. | n/a |
+| `dev` | Normal development for the next release. | `main`, only after the owner verifies it on the Pi |
+| `bugfix/<version>-bugs` (e.g. `bugfix/v0.1.0-bugs`) | Fixes for bugs found in a release; branched from that release on `main`. | `main` after Pi verification, then also into `dev` |
+
+Rules:
+1. Never merge `dev` into `main` before Pi verification. (v0.2.0 was merged early; that was a one-off, not the process.)
+2. To verify `dev`, tag it as a release candidate `vX.Y.Z-rcN` (e.g. `v0.3.0-rc1`). The owner tests that tag on the Pi.
+3. After the owner confirms, merge with `git merge --no-ff dev` into `main`. Then tag `vX.Y.Z` on `main`, publish it as a GitHub release with `gh release create`, and add its notes to `RELEASE.md`.
+4. Bug fixes work the same way. Fix on the bugfix branch, the owner verifies on the Pi, then merge to `main` and tag a patch release (`vX.Y.Z+1`). Merge `main` back into `dev` so the fixes aren't lost.
+5. Don't rewrite pushed history. Use a new commit instead of amending.
+
+## When to update BUGS.md
+
+- **The owner reports a problem on the Pi:** add `BUG-NNN` with the version it was found in, a severity (High/Medium/Low), status **Open**, and the symptom in the owner's words. Add it to the "Open bugs" list.
+- **The cause is found:** record it under the bug (and say whether it's confirmed or only likely).
+- **A fix is committed:** set **Fixed (awaiting Pi verification)**, and describe the fix and how to verify it on the Pi.
+- **The owner confirms on the Pi:** set **Verified** and remove the bug from the "Open bugs" list.
+- **At release time:** list the fixed bugs in `RELEASE.md` and the still-open ones under "Known issues". After a bug-fix branch, add a fix summary to `DEVELOPER_NOTES.md`.
+- Only the owner can verify a bug. Never mark a bug Verified on your own: nothing can run on this Windows PC.
 
 ## Commands
 
