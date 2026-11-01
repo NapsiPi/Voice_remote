@@ -96,8 +96,12 @@ if [[ $WITH_WHISPER_CPP -eq 1 ]]; then
         git clone --depth 1 --branch "$WHISPER_CPP_REF" https://github.com/ggml-org/whisper.cpp.git "$WHISPER_CPP_DIR"
     fi
     echo "whisper.cpp commit: $(git -C "$WHISPER_CPP_DIR" rev-parse --short HEAD)"
-    cmake -S "$WHISPER_CPP_DIR" -B "$WHISPER_CPP_DIR/build" -DCMAKE_BUILD_TYPE=Release
-    cmake --build "$WHISPER_CPP_DIR/build" --config Release -j"$(nproc)"
+    # On 32-bit userland with a 64-bit kernel, uname -m says aarch64 and the build would
+    # pick 64-bit CPU flags for a 32-bit compiler. setarch makes it report armv7l instead.
+    BUILD_PREFIX=()
+    [[ "$ARCH" == "armhf" ]] && BUILD_PREFIX=(setarch linux32)
+    "${BUILD_PREFIX[@]}" cmake -S "$WHISPER_CPP_DIR" -B "$WHISPER_CPP_DIR/build" -DCMAKE_BUILD_TYPE=Release
+    "${BUILD_PREFIX[@]}" cmake --build "$WHISPER_CPP_DIR/build" --config Release -j"$(nproc)"
 
     for model in $WHISPER_CPP_MODELS; do
         if [[ ! -f "$WHISPER_CPP_DIR/models/ggml-$model.bin" ]]; then

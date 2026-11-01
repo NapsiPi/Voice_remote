@@ -70,7 +70,17 @@ dpkg --print-architecture    # arm64 = 64-bit, armhf = 32-bit
 ```
 
 Don't rely on `uname -m`: a Pi 5 reports `aarch64` even on the 32-bit OS, because
-its kernel is 64-bit.
+its kernel is 64-bit (kernel names ending in `-rpi-v8`). To confirm the userland:
+
+```bash
+getconf LONG_BIT              # 32 = 32-bit userland
+file -L /usr/bin/python3      # "ELF 32-bit ... ARM" = 32-bit Python
+```
+
+A 64-bit kernel doesn't help Python packages: they follow the userland. Only
+re-flashing with Raspberry Pi OS (64-bit) enables faster-whisper. whisper.cpp
+doesn't depend on the kernel version. On armhf, `setup_test_env.sh` builds it under
+`setarch linux32`, so the build sees `armv7l` and picks 32-bit CPU flags.
 
 | | 64-bit (`arm64`) | 32-bit (`armhf`) |
 |---|---|---|
