@@ -5,7 +5,7 @@ The Pi talks you through four checks, and you answer each question by saying yes
   1. Microphone loopback  - record a few seconds and play them back
   2. TV connection        - find the TV on HDMI and play a message on its speakers
   3. Speech recognition   - Whisper transcribes a sentence and reads it back
-  4. TV control           - turn the TV volume up and back down over HDMI-CEC
+  4. TV control           - turn the TV volume up and back down (webOS on the network, else HDMI-CEC)
 Then it announces that the voice remote is launching.
 """
 
@@ -26,6 +26,7 @@ from sanity_test import (
     record_utterance, resample, rms, to_wav_bytes,
 )
 from tv_link import UI_VOLUME_DOWN, UI_VOLUME_UP
+from webos_link import connect_webos
 
 YES = {"yes", "yeah", "yep", "yup", "yah", "yeh", "correct", "right", "sure", "ok", "okay"}
 NO = {"no", "nope", "nah", "wrong", "incorrect"}
@@ -149,30 +150,45 @@ class StartupChecks:
         right = self.ask_yes_no(f"I heard: {text}. Is that right?")
         return Result(name, right, f"heard {text!r}")
 
-    def check_tv_control(self, tv_ready):
+    def check_tv_control(self):
+        """Volume up/down over webOS (the LG TV ignores CEC keys, BUG-002), else over CEC."""
         name = "4. TV control"
-        if not tv_ready:
-            self.say("Check four, TV control, is skipped because the TV is not ready.")
-            return Result(name, None, "skipped: TV check did not pass")
+        self.say("Check four: TV control. If the TV asks to pair with the voice remote, "
+                 "accept it with the TV remote.")
+        tv = connect_webos(self.args.tv_ip)
+        if tv is not None:
+            via = "webOS"
 
-        port, _ = self.router.tv_status()
-        cec = self.router.cec(port)
-        if not cec.available:
-            self.say("HDMI CEC is not available on this Pi, so I cannot control the TV.")
-            return Result(name, False, f"cec-ctl or {cec.dev} missing")
+            def press(up):
+                try:
+                    tv.volume_up() if up else tv.volume_down()
+                    return True
+                except (OSError, ConnectionError, RuntimeError) as e:
+                    print(f"[webos] {e}")
+                    return False
+        else:
+            port, _ = self.router.tv_status()
+            cec = self.router.cec(port) if port is not None else None
+            if cec is None or not cec.available:
+                self.say("I cannot reach the TV over the network or over HDMI CEC, so check four is skipped.")
+                return Result(name, None, "skipped: no webOS TV found and no CEC")
+            via = "CEC"
 
-        tv_name = cec.tv_name()
-        self.say("Check four: TV control. Watch the TV volume. "
-                 "I will turn it up two steps, then back down.")
+            def press(up):
+                return cec.press(UI_VOLUME_UP if up else UI_VOLUME_DOWN) == "sent"
+
+        self.say("Watch the TV volume. I will turn it up two steps, then back down.")
         sent = True
-        for key in [UI_VOLUME_UP, UI_VOLUME_UP, UI_VOLUME_DOWN, UI_VOLUME_DOWN]:
+        for up in (True, True, False, False):
             time.sleep(0.6)
-            sent = cec.press(key) == "sent" and sent
+            sent = press(up) and sent
         worked = self.ask_yes_no("Did the TV volume go up and then back down?")
         if not worked:
-            self.say("Make sure SIMPLINK, LG's HDMI CEC setting, is turned on in the TV settings.")
-        answer = f"TV answered as {tv_name!r}" if tv_name else "TV did not answer CEC queries"
-        return Result(name, worked, f"{answer}; keys {'sent' if sent else 'failed to send'}")
+            self.say("Turn on LG Connect Apps in the TV's network settings." if via == "webOS"
+                     else "Make sure SIMPLINK, LG's HDMI CEC setting, is turned on in the TV settings.")
+        if tv is not None:
+            tv.close()
+        return Result(name, worked, f"via {via}; volume commands {'sent' if sent else 'failed to send'}")
 
     # --- run --------------------------------------------------------------------
 
@@ -186,7 +202,7 @@ class StartupChecks:
             results = [self.check_mic_loopback()]
             results.append(self.check_tv())
             results.append(self.check_speech())
-            results.append(self.check_tv_control(tv_ready=results[1].passed))
+            results.append(self.check_tv_control())
 
             print("\n== Startup check results ==")
             for r in results:

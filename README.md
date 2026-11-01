@@ -14,7 +14,7 @@ over the micro-HDMI connection.
 |------|-------|------|
 | Single-board computer | Raspberry Pi 5 | Runs voice capture, recognition and TV control |
 | Audio HAT | WM8960 Audio HAT (WM8960 codec, on-board microphones) | Microphone input to the Pi |
-| TV | LG (exact model TBD) | Target device, connected to the Pi by micro-HDMI |
+| TV | LG UJ635V (webOS) | Target device: micro-HDMI for picture, sound and power (CEC); Wi-Fi for remote control (webOS) |
 | Cable | Micro-HDMI to HDMI | Pi 5 to TV link |
 
 ### Software
@@ -171,8 +171,24 @@ python3 test/light_remote.py            # on the Pi's keyboard or over SSH
 At startup it checks:
 - **WM8960 HAT:** the card is detected (`PASS`/`FAIL`).
 - **TV:** connected on HDMI and answering HDMI-CEC (`PASS`/`WARN`/`FAIL`).
+- **webOS:** the LG TV is found on the network and paired (`PASS`/`FAIL`/`INFO`).
 
-Then each key press goes to the TV over CEC:
+**How the TV is controlled:** the LG TV ignores CEC remote keys (BUG-002), so:
+- **Power** goes over HDMI-CEC.
+- **All other keys** go over **webOS on the local network**. Without webOS, they fall
+  back to CEC.
+
+**One-time LG TV setup for webOS control:**
+1. Put the TV on the same Wi-Fi/LAN as the Pi.
+2. On the TV, turn on **Settings → Network → LG Connect Apps**.
+3. Turn the TV on and run the light remote. The TV shows a pairing prompt; accept it
+   with the TV remote within 60 s.
+
+The pairing key and the TV's address are saved in `~/.config/voice_remote/lgtv.json`.
+Delete that file to pair again. The TV is found automatically; if it isn't, pass
+`--tv-ip <address>` (shown in the TV's network settings).
+
+Each key press then goes to the TV:
 
 | Key | TV command | Key | TV command |
 |-----|-----------|-----|-----------|
@@ -184,11 +200,11 @@ Then each key press goes to the TV over CEC:
 | `p` | Power on / standby | `t` | Mic loopback: record 3 s, play on the HAT |
 | `?` | Help | `q` | Quit |
 
-Pass: the HAT and TV checks pass, and the TV reacts to the keys. If the TV ignores
-the keys, enable SIMPLINK in the LG TV settings.
+Pass: the HAT, TV and webOS checks pass, and the TV reacts to the keys. Each key
+prints how it was sent (`sent via webOS`, or the CEC result). `--no-webos` sends
+keys over CEC only, and `--webos-debug` prints every webOS message.
 
-Each key prints how the TV took it: `sent` (acknowledged), `not acknowledged` or
-`failed`. To debug a key the TV ignores (e.g. volume, BUG-002):
+To debug CEC itself:
 
 ```bash
 python3 test/light_remote.py --cec-debug    # prints every cec-ctl command and its output
@@ -255,7 +271,7 @@ on, otherwise on the HAT speaker.
 | 1 | Microphone loopback | "When I say go, talk for a few seconds." It records 4 s and plays it back. | Sound was captured and you say **yes** to "Did you hear yourself clearly?" |
 | 2 | TV connection | Looks for the TV on HDMI and asks it over CEC whether it's on. If it's in standby, asks you to turn it on. | Audio switches to the TV and you say **yes** to "Can you hear it from the TV?" |
 | 3 | Speech recognition | "Please say a short sentence." Whisper transcribes it. | You say **yes** to "I heard: …. Is that right?" |
-| 4 | TV control | Sends volume up ×2 then down ×2 to the TV over HDMI-CEC. Skipped if check 2 failed. | You say **yes** to "Did the TV volume go up and then back down?" |
+| 4 | TV control | Sends volume up ×2 then down ×2 over webOS (network), or over HDMI-CEC without webOS. Skipped if neither reaches the TV. | You say **yes** to "Did the TV volume go up and then back down?" |
 
 At the end it prints a PASS/FAIL/SKIP table. If everything passed it says "We are
 launching the voice remote." If something failed, it names the failed checks and
@@ -274,7 +290,8 @@ asks whether to launch anyway.
 | Whisper prints text you didn't say on silence | Known Whisper behaviour on noise; raise `--threshold-factor` |
 | Audio stays on the HAT with the TV on | Run `bash test/hdmi_audio_check.sh` (TV seen? HDMI audio card present? test sound plays?). Check `[audio] Output -> ...` in the log for the reason; enable SIMPLINK on the TV, or try `--no-cec` |
 | No `vc4hdmi` card in `/proc/asound/cards` | Remove `,noaudio` from `dtoverlay=vc4-kms-v3d` in `/boot/firmware/config.txt` and reboot |
-| Check 4 fails: TV volume doesn't change | Enable SIMPLINK on the LG TV. Some TVs ignore volume keys from a playback device; the printed detail shows whether the TV answered CEC at all |
+| Check 4 fails: TV volume doesn't change | Check the log says `webOS TV ... paired and connected`. If not, turn on LG Connect Apps, put the TV on the Pi's network, or pass `--tv-ip`. Over CEC alone, the LG TV ignores volume keys (BUG-002) |
+| `webOS TV at ...: ... refused` / pairing fails | Turn the TV on first, then accept the prompt within 60 s. If it was paired before, delete `~/.config/voice_remote/lgtv.json` and pair again |
 | `cec-ctl` permission denied | Add your user to the `video` group: `sudo usermod -aG video $USER`, then log in again |
 | `aplay: ... Device or resource busy` | Another sound server (e.g. PipeWire on the desktop image) holds the device; run from the Lite image or stop it |
 

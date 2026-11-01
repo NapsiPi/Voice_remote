@@ -15,7 +15,7 @@ The Raspberry Pi works as a voice-controlled TV remote:
 |------|-------|
 | Host | Raspberry Pi 5 |
 | Microphone | WM8960 Audio HAT, mounted on the Pi's 40-pin header |
-| Target TV | LG (exact model TBD), connected over micro-HDMI |
+| Target TV | LG UJ635V (webOS), micro-HDMI to the Pi, same Wi-Fi as the Pi |
 
 ## Components
 
@@ -60,6 +60,24 @@ when output is the TV. There's no acoustic echo cancellation, and the HAT speake
 next to the mics would trigger it on the Pi's own voice. Stopping playback kills
 `aplay`, whose expected "Interrupted system call" message is suppressed.
 
+### 5a. TV control over webOS (`test/webos_link.py`)
+The LG TV (webOS) ignores CEC user-control keys from the Pi (BUG-002), so control is
+split by transport:
+
+| Command | Transport | Why |
+|---------|-----------|-----|
+| Power on / standby | HDMI-CEC (`--image-view-on` / `--standby`) | Works on the LG TV; webOS can't wake a TV that is off |
+| Volume, mute, channels, play/pause, arrows, OK, Back, Home, digits | webOS SSAP over the LAN | The TV acts on these; it ignores them over CEC |
+
+`webos_link.py` uses only the standard library:
+- a minimal WebSocket client: `wss://<tv>:3001`, falling back to `ws://<tv>:3000`
+- SSDP discovery (`urn:lge-com:service:webos-second-screen:1`)
+- PROMPT pairing; the client key is saved in `~/.config/voice_remote/lgtv.json`
+- requests like `ssap://audio/volumeUp`
+- buttons through the pointer input socket (`getPointerInputSocket`)
+
+It reconnects once if the TV drops the connection.
+
 ### 6. Light keyboard remote (`test/light_remote.py`)
 Uses only the standard library plus `cec-ctl`/`arecord`/`aplay`, with no speech
 recognition. It checks for the WM8960 card and the TV's CEC link, then maps key
@@ -81,3 +99,4 @@ _Each decision is recorded here when it is made._
 | 3 | 2026-11-01 | The voice remote launches only after four spoken startup checks (mic loopback, TV connection, speech recognition, TV control), each confirmed by the user saying yes or no. If any fail, the user is asked whether to launch anyway. |
 | 4 | 2026-11-01 | On 32-bit Pi OS (armhf), speech recognition uses whisper.cpp (C/C++, built from source by `setup_test_env.sh`, run as a CLI per utterance). faster-whisper has no armhf builds, and the owner wants no paid API, so the OpenAI backend is opt-in only. |
 | 5 | 2026-11-01 | A light test (`test/light_remote.py`) checks the hardware with no speech stack: HAT detected, TV reachable over CEC, keyboard keys sent as CEC remote commands. CEC keys are sent as numeric user-control codes from the spec, not cec-ctl's key names. |
+| 6 | 2026-11-01 | TV control uses HDMI + Wi-Fi (owner's choice over HDMI-only or an IR blaster): CEC for power, LG webOS network control for everything else, because the LG TV silently ignores CEC user-control keys (BUG-002). |

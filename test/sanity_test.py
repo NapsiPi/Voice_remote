@@ -395,6 +395,8 @@ def add_common_args(p):
     p.add_argument("--output-device", default=None,
                    help="fixed ALSA device for speech, e.g. plughw:CARD=wm8960soundcard,DEV=0 "
                         "(default: automatic, TV when connected and on, else the HAT speaker)")
+    p.add_argument("--tv-ip", default=None,
+                   help="LG TV IP address for webOS control (default: last used, else auto-discover)")
     p.add_argument("--no-cec", dest="cec", action="store_false",
                    help="don't ask the TV for its power state over HDMI-CEC; a connected TV counts as on")
     p.add_argument("--rate", type=int, default=None, help="capture sample rate (default: device default)")

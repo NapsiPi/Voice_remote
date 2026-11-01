@@ -29,14 +29,17 @@ python test/startup_checks.py [--then "<cmd>"]                      # 4 spoken p
 bash test/setup_test_env.sh --light && python3 test/light_remote.py  # keyboard -> CEC remote, no venv/Whisper
 ```
 
-`tv_link.py` and `light_remote.py` must stay standard-library-only, so the light test needs no pip packages.
+`tv_link.py`, `webos_link.py` and `light_remote.py` must stay standard-library-only, so the light test needs no pip packages.
 
 Module layout in `test/`:
 - `tv_link.py`: TV detection (DRM status, `/proc/asound/cards`) and HDMI-CEC through `cec-ctl`.
 - `audio_output.py`: `AudioRouter`, which chooses the TV or the HAT speaker.
 - `sanity_test.py`: the shared building blocks (`add_common_args`, `build_audio`, `Mic`, `Speaker`, the VAD, barge-in) plus its own echo loop.
 - `startup_checks.py`: imports those building blocks.
-- `light_remote.py`: the keyboard remote; uses only `tv_link.py`.
+- `webos_link.py`: LG webOS network control. It has its own minimal WebSocket client, SSDP discovery and pairing, and keeps the key in `~/.config/voice_remote/lgtv.json`.
+- `light_remote.py`: the keyboard remote; uses `tv_link.py` and `webos_link.py`.
+
+The LG TV ignores CEC user-control keys. Use CEC only for power, and webOS for everything else.
 
 The scripts import each other as plain modules, so run them from `test/` or as `python test/<script>.py`. All speech output must go through `Speaker`, which routes via `AudioRouter`, so it follows the TV.
 

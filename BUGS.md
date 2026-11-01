@@ -3,7 +3,7 @@
 | ID | Title | Found in | Severity | Status |
 |----|-------|----------|----------|--------|
 | BUG-001 | Speech never plays on the TV; HDMI audio reported as not available | v0.1.0 | High | Fixed (awaiting Pi verification) |
-| BUG-002 | CEC volume up/down has no effect on the LG TV (light remote) | v0.1.0 | Medium | Open: cause confirmed, fix planned (LG webOS network control) |
+| BUG-002 | CEC volume up/down has no effect on the LG TV (light remote) | v0.1.0 | Medium | Fixed (awaiting Pi verification): keys via webOS |
 | BUG-003 | Startup checks don't wait for the spoken yes/no answer, so the voice app never starts | v0.1.0 | High | Fixed (awaiting Pi verification) |
 | BUG-004 | Barge-in triggers incorrectly; aplay "Interrupted system call" breaks speaker audio | v0.1.0 | Medium | Fixed (awaiting Pi verification) |
 | BUG-005 | Spoken replies sound robotic | v0.1.0 | Low | Open |
@@ -70,6 +70,15 @@ only after it is verified on the Pi.
 - **Optional experiment:** register with LG's vendor ID
   (`cec-ctl --playback --vendor-id 0x00e091`, if this cec-ctl supports it) and retry
   volume. Low odds.
+- **Fix (branch `bugfix/v0.1.0-bugs`):** the owner chose HDMI + Wi-Fi. The TV is an LG
+  webOS UJ635V (2017), on the same Wi-Fi as the Pi. New `test/webos_link.py`
+  (standard library only) discovers, pairs with and controls the TV over webOS.
+  `light_remote.py` sends power over CEC and every other key over webOS (CEC as the
+  fallback). Startup check 4 changes volume over webOS.
+- **Verify on the Pi:**
+  1. Turn on LG Connect Apps on the TV.
+  2. Run `python3 test/light_remote.py`, and accept the pairing prompt on the TV.
+  3. Press `+`/`-`: the volume changes, and the log says `sent via webOS`.
 
 ## BUG-003: Startup checks don't wait for the spoken yes/no answer, so the voice app never starts
 - **Found in:** v0.1.0, `test/startup_checks.py`
