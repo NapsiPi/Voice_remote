@@ -276,3 +276,5 @@ _TBD: the voice remote itself is not written yet._
 - [ARCHITECTURE.md](ARCHITECTURE.md): system design and data flow
 - [DEVELOPER_NOTES.md](DEVELOPER_NOTES.md): running notes and reminders for developers
 - [SKILLS.md](SKILLS.md): skills and roles used on this project
+- [RELEASE.md](RELEASE.md): release notes per tagged version
+- [BUGS.md](BUGS.md): known bugs, with the release they were found in and their status

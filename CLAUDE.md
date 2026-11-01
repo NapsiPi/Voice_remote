@@ -13,6 +13,7 @@ A Raspberry Pi voice remote: the microphone on a WM8960 Audio HAT picks up voice
 - When the owner flags a point as needing a developer note, add a row to the table in `DEVELOPER_NOTES.md`.
 - `SKILLS.md` lists the roles used on the project. The primary role is embedded C developer.
 - Commit changes in small steps with clear messages.
+- Releases are annotated tags (`vX.Y.Z`), published as GitHub releases, with notes in `RELEASE.md`. Bugs found on the Pi go in `BUGS.md` (`BUG-NNN`, the version found in, status Open, then Fixed (awaiting Pi verification), then Verified). Fix them on a `bugfix/...` branch, reference the bug IDs in commit messages, and merge only after Pi verification.
 
 ## Commands
 
