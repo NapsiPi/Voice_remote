@@ -22,6 +22,7 @@ Run these on the Raspberry Pi, not on the Windows dev PC. This PC has no Python,
 ```bash
 bash test/setup_test_env.sh                   # apt packages + .venv with test/requirements.txt
 bash test/mic_check.sh [seconds] [card]       # ALSA-only record/playback check of the WM8960 HAT
+bash test/hdmi_audio_check.sh [port]          # TV on HDMI? vc4hdmi card? speaker-test 2ch/48k on the TV
 source .venv/bin/activate && python test/sanity_test.py [--help]   # Whisper STT -> espeak-ng echo, with barge-in
 python test/startup_checks.py [--then "<cmd>"]                      # 4 spoken pre-launch checks, yes/no answers
 

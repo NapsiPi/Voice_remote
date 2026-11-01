@@ -262,7 +262,8 @@ asks whether to launch anyway.
 | It never starts listening | Mic too quiet: raise capture in `alsamixer`, or lower `--threshold-factor` |
 | The reply interrupts itself | The HAT speaker is picked up by its own mics: use headphones, or raise `--barge-in-factor` |
 | Whisper prints text you didn't say on silence | Known Whisper behaviour on noise; raise `--threshold-factor` |
-| Audio stays on the HAT with the TV on | Check `[audio] Output -> ...` in the log for the reason; enable SIMPLINK on the TV, or try `--no-cec` |
+| Audio stays on the HAT with the TV on | Run `bash test/hdmi_audio_check.sh` (TV seen? HDMI audio card present? test sound plays?). Check `[audio] Output -> ...` in the log for the reason; enable SIMPLINK on the TV, or try `--no-cec` |
+| No `vc4hdmi` card in `/proc/asound/cards` | Remove `,noaudio` from `dtoverlay=vc4-kms-v3d` in `/boot/firmware/config.txt` and reboot |
 | Check 4 fails: TV volume doesn't change | Enable SIMPLINK on the LG TV. Some TVs ignore volume keys from a playback device; the printed detail shows whether the TV answered CEC at all |
 | `cec-ctl` permission denied | Add your user to the `video` group: `sudo usermod -aG video $USER`, then log in again |
 | `aplay: ... Device or resource busy` | Another sound server (e.g. PipeWire on the desktop image) holds the device; run from the Lite image or stop it |

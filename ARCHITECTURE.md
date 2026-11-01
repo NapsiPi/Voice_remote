@@ -42,7 +42,10 @@ All speech output goes through one router, which picks the device before each pl
 3. Is there HDMI audio? Look for `vc4hdmi<port>` in `/proc/asound/cards`, then play on `hdmi:CARD=vc4hdmi<port>,DEV=0`.
 4. Otherwise use the WM8960 speaker (`plughw:CARD=<wm8960 card>,DEV=0`).
 
-If `aplay` fails on the TV device, the router drops to the HAT for 60 s.
+HDMI audio on the Pi (an IEC958 device) only takes 2-channel audio, so everything sent
+to an `hdmi:` device is first converted to stereo 48 kHz (`write_hdmi_wav`). If `aplay`
+still fails on the TV device, the router drops to the HAT for 60 s and keeps the error
+text in its reason.
 
 ### 5. Startup checks (`test/startup_checks.py`)
 Runs before the voice remote: mic loopback, TV connection, speech recognition and TV

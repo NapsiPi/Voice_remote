@@ -30,6 +30,7 @@ import sounddevice as sd
 from audio_output import AudioRouter
 
 WHISPER_RATE = 16000
+HDMI_RATE = 48000
 BLOCK_MS = 30
 START_BLOCKS = 3   # consecutive loud blocks (~90 ms) that count as speech starting
 BARGE_BLOCKS = 5   # consecutive loud blocks (~150 ms) that interrupt playback
@@ -65,6 +66,29 @@ def to_wav_bytes(audio, rate):
         wf.setframerate(rate)
         wf.writeframes(pcm.tobytes())
     return buf.getvalue()
+
+
+def read_wav_mono(path):
+    """16-bit WAV file -> (mono float32 samples, sample rate)."""
+    with wave.open(str(path), "rb") as wf:
+        rate, channels = wf.getframerate(), wf.getnchannels()
+        data = wf.readframes(wf.getnframes())
+    audio = np.frombuffer(data, dtype=np.int16).astype(np.float32) / 32768
+    if channels > 1:
+        audio = audio.reshape(-1, channels).mean(axis=1)
+    return audio, rate
+
+
+def write_hdmi_wav(src, dst):
+    """HDMI audio on the Pi only takes 2-channel audio at the TV's rates (BUG-001):
+    convert mono espeak-ng/loopback WAVs to stereo 48 kHz."""
+    audio, rate = read_wav_mono(src)
+    pcm = (np.clip(resample(audio, rate, HDMI_RATE), -1.0, 1.0) * 32767).astype(np.int16)
+    with wave.open(str(dst), "wb") as wf:
+        wf.setnchannels(2)
+        wf.setsampwidth(2)
+        wf.setframerate(HDMI_RATE)
+        wf.writeframes(np.repeat(pcm, 2).tobytes())  # same sample to left and right
 
 
 def normalise(text):
@@ -202,6 +226,7 @@ class Speaker:
         self.voice = voice
         self.speed = speed
         self.wav = Path(tempfile.gettempdir()) / "voice_remote_tts.wav"
+        self.hdmi_wav = Path(tempfile.gettempdir()) / "voice_remote_hdmi.wav"
         self.proc = None
 
     def start(self, text):
@@ -213,22 +238,28 @@ class Speaker:
 
     def play(self, wav):
         output = self.router.current()
-        self.proc = self._aplay(output.device, wav)
-        if output.name == "tv":
-            # HDMI audio can be missing even with the TV on; fall back to the HAT if aplay dies.
-            time.sleep(0.3)
-            if self.proc.poll() not in (None, 0):
-                print("[audio] TV HDMI audio failed, switching to the HAT speaker")
-                self.router.tv_failed()
-                self.proc = self._aplay(self.router.current().device, wav)
+        if not output.device.startswith("hdmi:"):
+            self.proc = self._aplay(output.device, wav)
+            return
+
+        write_hdmi_wav(wav, self.hdmi_wav)
+        self.proc = self._aplay(output.device, self.hdmi_wav, capture_errors=True)
+        # HDMI audio can still fail with the TV on; fall back to the HAT if aplay dies.
+        time.sleep(0.3)
+        code = self.proc.poll()
+        if code not in (None, 0):
+            error = self.proc.stderr.read().strip() or f"aplay exit code {code}"
+            print(f"[audio] TV HDMI audio failed on {output.device}: {error}")
+            self.router.tv_failed(error)
+            self.proc = self._aplay(self.router.current().device, wav)
 
     @staticmethod
-    def _aplay(device, wav):
+    def _aplay(device, wav, capture_errors=False):
         cmd = ["aplay", "-q"]
         if device:
             cmd += ["-D", device]
         cmd.append(str(wav))
-        return subprocess.Popen(cmd)
+        return subprocess.Popen(cmd, stderr=subprocess.PIPE if capture_errors else None, text=True)
 
     def playing(self):
         return self.proc is not None and self.proc.poll() is None

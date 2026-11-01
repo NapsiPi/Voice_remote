@@ -2,7 +2,7 @@
 
 | ID | Title | Found in | Severity | Status |
 |----|-------|----------|----------|--------|
-| BUG-001 | Speech never plays on the TV; HDMI audio reported as not available | v0.1.0 | High | Open |
+| BUG-001 | Speech never plays on the TV; HDMI audio reported as not available | v0.1.0 | High | Fixed (awaiting Pi verification) |
 | BUG-002 | CEC volume up/down has no effect on the LG TV (light remote) | v0.1.0 | Medium | Open |
 | BUG-003 | Startup checks don't wait for the spoken yes/no answer, so the voice app never starts | v0.1.0 | High | Open |
 | BUG-004 | Barge-in triggers incorrectly | v0.1.0 | Medium | Open |
@@ -25,6 +25,14 @@ only after it is verified on the Pi.
   `vc4-kms-v3d` overlay).
 - **Fix plan:** convert audio to 2-channel 48 kHz before playing it on HDMI. Show the
   `aplay` error and the router's reason. Add an HDMI audio diagnostic script.
+- **Fix (branch `bugfix/v0.1.0-bugs`):** `Speaker.play` converts every WAV to stereo
+  48 kHz (`write_hdmi_wav`) before playing it on an `hdmi:` device. If `aplay` still
+  fails, its error text is printed and kept in the router's reason
+  (`[audio] Output -> hat: TV HDMI audio failed recently (<error>)`).
+  `test/hdmi_audio_check.sh` shows the HDMI connector status, the sound cards and the
+  `config.txt` display lines, then plays `speaker-test` (2 ch, 48 kHz) on the TV.
+- **Verify on the Pi:** `bash test/hdmi_audio_check.sh` should say "Front Left/Right"
+  on the TV. After that, check 2 of `startup_checks.py` should pass.
 
 ## BUG-002: CEC volume up/down has no effect on the LG TV (light remote)
 - **Found in:** v0.1.0, `test/light_remote.py`
