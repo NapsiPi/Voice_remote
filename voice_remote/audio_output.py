@@ -9,7 +9,7 @@ few seconds, so turning the TV on or off moves the audio without a restart.
 import time
 from dataclasses import dataclass
 
-from tv_link import Cec, alsa_card, connected_hdmi_ports
+from .tv_link import Cec, alsa_card, connected_hdmi_ports
 
 TV_POWER_ON = (None, "on", "to-on")  # None: TV gave no CEC answer, trust the HDMI connection
 TV_FAILED_HOLD_S = 60                # after HDMI audio fails, stay on the HAT this long

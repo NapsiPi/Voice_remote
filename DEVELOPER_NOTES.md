@@ -8,6 +8,7 @@ following up.
 | 1 | 2026-11-01 | Project set up: README, architecture doc, developer notes and skills file created. | Done |
 | 2 | 2026-11-01 | Released **v0.1.0** (tag `v0.1.0`, notes in [RELEASE.md](RELEASE.md)). First Pi test found BUG-001 to BUG-004, tracked in [BUGS.md](BUGS.md). Fixes are on branch `bugfix/v0.1.0-bugs`; merge to `main` after they are verified on the Pi. | Done: merged as v0.1.1 |
 | 3 | 2026-11-01 | Bug-fix summary for branch `bugfix/v0.1.0-bugs`, released as tag **v0.1.1** (below). | Done |
+| 4 | 2026-11-01 | v0.2.0 development on branch `dev`: the voice remote app (`./voice-remote`), the keyboard remote moved into the app (`--keys`), and setup moved to the root (`./setup.sh`). `dev` is merged to `main`. Verify on the Pi, then tag **v0.2.0**. Old commands changed: see RELEASE.md v0.2.0, "Changed". | Open: Pi verification |
 
 ## Bug-fix summary: `bugfix/v0.1.0-bugs`, v0.1.0 to v0.1.1
 

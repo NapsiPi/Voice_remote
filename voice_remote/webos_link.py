@@ -226,13 +226,14 @@ class WebOsTv:
         self._pointer.send(f"type:button\nname:{name}\n\n")
 
     def do(self, action):
-        """Run ("button", NAME) or ("request", URI), reconnecting once if the TV dropped us."""
-        kind, arg = action
+        """Run ("button", NAME) or ("request", URI[, payload]), reconnecting once if the TV
+        dropped us."""
+        kind, arg, *payload = action
         for attempt in (1, 2):
             try:
                 if self.ws is None:
                     self.connect()
-                return self.button(arg) if kind == "button" else self.request(arg)
+                return self.button(arg) if kind == "button" else self.request(arg, *payload)
             except (OSError, ConnectionError):
                 self.close()
                 if attempt == 2:

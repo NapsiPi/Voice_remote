@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Installs everything the scripts in test/ need on Raspberry Pi OS.
+# Installs everything the voice remote and the test tools need on Raspberry Pi OS.
 #
-# Usage: bash test/setup_test_env.sh [--light] [--whisper-cpp] [--with-openai]
-#   (no options)   full voice test setup for this OS:
+# Usage: ./setup.sh [--light] [--whisper-cpp] [--with-openai]
+#   (no options)   full voice remote setup for this OS:
 #                    64-bit (arm64): pip packages + local Whisper (faster-whisper)
 #                    32-bit (armhf): numpy/cffi from apt + whisper.cpp built from source
-#   --light        only what test/light_remote.py needs (no Python packages, no Whisper)
+#   --light        only what the keyboard remote needs (no Python packages, no Whisper)
 #   --whisper-cpp  also build whisper.cpp on 64-bit
 #   --with-openai  also install the paid OpenAI Whisper API client
 #
@@ -14,7 +14,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(dirname "$SCRIPT_DIR")"
+REPO_ROOT="$SCRIPT_DIR"
 VENV="$REPO_ROOT/.venv"
 WHISPER_CPP_DIR="$REPO_ROOT/third_party/whisper.cpp"
 WHISPER_CPP_REF="${WHISPER_CPP_REF:-master}"
@@ -62,7 +62,7 @@ sudo apt-get install -y "${APT_PACKAGES[@]}"
 if [[ $LIGHT -eq 1 ]]; then
     echo
     echo "Done (light). Next step:"
-    echo "  python3 test/light_remote.py"
+    echo "  ./voice-remote --keys                 # keyboard remote"
     exit 0
 fi
 
@@ -128,6 +128,5 @@ fi
 
 echo
 echo "Done. Next steps:"
-echo "  bash test/mic_check.sh                 # record and play back with arecord/aplay"
-echo "  source .venv/bin/activate"
-echo "  python test/startup_checks.py          # spoken startup checks"
+echo "  bash test/mic_check.sh                 # optional: HAT record/playback check"
+echo "  ./voice-remote                         # voice remote (startup checks first)"

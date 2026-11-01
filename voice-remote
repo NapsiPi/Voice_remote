@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# Starts the voice remote; runs until you say "remote exit" or press Ctrl+C.
+#   ./voice-remote           voice remote (startup checks, then voice commands)
+#   ./voice-remote --keys    keyboard remote (no speech stack needed)
+#   ./voice-remote --help    all options
+set -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$REPO_ROOT"
+
+PYTHON=python3
+if [[ " $* " != *" --keys "* ]]; then
+    if [[ ! -x .venv/bin/python ]]; then
+        echo "No .venv found. Run ./setup.sh first (or use ./voice-remote --keys)." >&2
+        exit 1
+    fi
+    PYTHON=.venv/bin/python
+fi
+exec "$PYTHON" -m voice_remote "$@"

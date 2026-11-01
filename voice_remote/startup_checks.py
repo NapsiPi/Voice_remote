@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Startup checks that run before the voice remote starts.
 
 The Pi talks you through four checks, and you answer each question by saying yes or no:
@@ -6,37 +5,32 @@ The Pi talks you through four checks, and you answer each question by saying yes
   2. TV connection        - find the TV on HDMI and play a message on its speakers
   3. Speech recognition   - Whisper transcribes a sentence and reads it back
   4. TV control           - turn the TV volume up and back down (webOS on the network, else HDMI-CEC)
-Then it announces that the voice remote is launching.
+Then it announces that the voice remote is launching. Run by the voice remote at
+startup (skip with --skip-checks).
 """
 
-import argparse
-import shlex
-import subprocess
-import sys
 import tempfile
 import time
 from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
-import sounddevice as sd
 
-from sanity_test import (
-    BLOCK_MS, WHISPER_RATE, add_common_args, build_audio, calibrate, normalise,
-    record_utterance, resample, rms, to_wav_bytes,
-)
-from tv_link import UI_VOLUME_DOWN, UI_VOLUME_UP
-from webos_link import connect_webos
+from .speech import BLOCK_MS, normalise, rms, to_wav_bytes
 
 YES = {"yes", "yeah", "yep", "yup", "yah", "yeh", "correct", "right", "sure", "ok", "okay"}
 NO = {"no", "nope", "nah", "wrong", "incorrect"}
 ANSWER_WAIT_S = 8
-ECHO_TAIL_S = 0.4  # let the room go quiet after we speak before listening (BUG-003)
 TV_ON = (None, "on", "to-on")
 
 INTRO = ("Welcome to the voice remote. Before it starts, we will run four quick checks: "
          "the microphone, the TV connection, speech recognition, and TV control. "
          "Answer each question by saying yes or no.")
+
+
+def add_check_args(p):
+    p.add_argument("--loopback-seconds", type=float, default=4.0,
+                   help="length of the microphone loopback recording (default: 4)")
 
 
 @dataclass
@@ -47,29 +41,17 @@ class Result:
 
 
 class StartupChecks:
-    def __init__(self, args):
+    def __init__(self, voice, tv, args):
+        """voice: speech.Voice with the mic stream already running; tv: tv.TvControl."""
+        self.voice = voice
+        self.tv = tv
         self.args = args
-        self.transcriber, self.speaker, self.mic = build_audio(args)
-        self.router = self.speaker.router
-        self.threshold = None
-
-    # --- speaking and listening -------------------------------------------------
+        self.mic = voice.mic
+        self.speaker = voice.speaker
+        self.router = voice.speaker.router
 
     def say(self, text):
-        print(f"[say] {text}")
-        self.speaker.start(text)
-        self.speaker.wait()
-        time.sleep(ECHO_TAIL_S)
-        self.mic.flush()  # drop our own voice picked up by the mics
-
-    def listen(self, preroll=(), wait_s=ANSWER_WAIT_S):
-        audio = record_utterance(self.mic, self.threshold, self.args, list(preroll), wait_s)
-        if audio is None:
-            print("[heard] (nothing)")
-            return ""
-        text = self.transcriber.transcribe(resample(audio, self.mic.rate, WHISPER_RATE))
-        print(f"[heard] {text!r}")
-        return text
+        self.voice.say(text)
 
     def ask_yes_no(self, question, attempts=3):
         """Ask a question, then listen; True for yes, False for no or no clear answer.
@@ -79,7 +61,7 @@ class StartupChecks:
         for attempt in range(1, attempts + 1):
             self.say(question)
             print(f"[listening] say yes or no (attempt {attempt}/{attempts}, {ANSWER_WAIT_S}s)...")
-            words = set(normalise(self.listen()).split())
+            words = set(normalise(self.voice.listen(ANSWER_WAIT_S)).split())
             if words & YES and not words & NO:
                 return True
             if words & NO and not words & YES:
@@ -99,9 +81,10 @@ class StartupChecks:
         self.say("Check one: microphone. When I say go, talk for a few seconds, "
                  "and I will play it back to you. Go.")
         audio, peak = self.record_seconds(self.args.loopback_seconds)
-        if peak <= self.threshold:
+        threshold = self.voice.threshold
+        if peak <= threshold:
             self.say("I did not pick up any sound from the microphone.")
-            return Result(name, False, f"no speech captured (peak {peak:.4f} <= threshold {self.threshold:.4f})")
+            return Result(name, False, f"no speech captured (peak {peak:.4f} <= threshold {threshold:.4f})")
 
         wav = Path(tempfile.gettempdir()) / "voice_remote_loopback.wav"
         wav.write_bytes(to_wav_bytes(audio, self.mic.rate))
@@ -143,7 +126,7 @@ class StartupChecks:
     def check_speech(self):
         name = "3. Speech recognition"
         self.say("Check three: speech recognition. Please say a short sentence.")
-        text = self.listen(wait_s=10)
+        text = self.voice.listen(10)
         if not text:
             self.say("I did not hear anything.")
             return Result(name, False, "nothing transcribed")
@@ -153,101 +136,43 @@ class StartupChecks:
     def check_tv_control(self):
         """Volume up/down over webOS (the LG TV ignores CEC keys, BUG-002), else over CEC."""
         name = "4. TV control"
-        self.say("Check four: TV control. If the TV asks to pair with the voice remote, "
-                 "accept it with the TV remote.")
-        tv = connect_webos(self.args.tv_ip)
-        if tv is not None:
-            via = "webOS"
+        self.say("Check four: TV control.")
+        if not self.tv.available:
+            self.say("I cannot reach the TV over the network or over HDMI CEC, so check four is skipped.")
+            return Result(name, None, "skipped: no webOS TV found and no CEC")
 
-            def press(up):
-                try:
-                    tv.volume_up() if up else tv.volume_down()
-                    return True
-                except (OSError, ConnectionError, RuntimeError) as e:
-                    print(f"[webos] {e}")
-                    return False
-        else:
-            port, _ = self.router.tv_status()
-            cec = self.router.cec(port) if port is not None else None
-            if cec is None or not cec.available:
-                self.say("I cannot reach the TV over the network or over HDMI CEC, so check four is skipped.")
-                return Result(name, None, "skipped: no webOS TV found and no CEC")
-            via = "CEC"
-
-            def press(up):
-                return cec.press(UI_VOLUME_UP if up else UI_VOLUME_DOWN) == "sent"
-
+        via = "webOS" if self.tv.webos is not None else "CEC"
         self.say("Watch the TV volume. I will turn it up two steps, then back down.")
-        sent = True
-        for up in (True, True, False, False):
+        results = []
+        for action in ("volume_up", "volume_up", "volume_down", "volume_down"):
             time.sleep(0.6)
-            sent = press(up) and sent
+            results.append(self.tv.send(action))
+        sent = all(r.startswith("sent") for r in results)
         worked = self.ask_yes_no("Did the TV volume go up and then back down?")
         if not worked:
             self.say("Turn on LG Connect Apps in the TV's network settings." if via == "webOS"
                      else "Make sure SIMPLINK, LG's HDMI CEC setting, is turned on in the TV settings.")
-        if tv is not None:
-            tv.close()
-        return Result(name, worked, f"via {via}; volume commands {'sent' if sent else 'failed to send'}")
+        return Result(name, worked, f"via {via}; volume commands: {', '.join(sorted(set(results)))}")
 
     # --- run --------------------------------------------------------------------
 
     def run(self):
-        with self.mic.stream:
-            noise = calibrate(self.mic, self.args.calibrate)
-            self.threshold = max(noise * self.args.threshold_factor, self.args.min_threshold)
-            print(f"Noise floor {noise:.4f} RMS, speech threshold {self.threshold:.4f} RMS")
+        """Run the four checks. True to launch the voice remote, False to stop."""
+        self.say(INTRO)
+        results = [self.check_mic_loopback(), self.check_tv(), self.check_speech(), self.check_tv_control()]
 
-            self.say(INTRO)
-            results = [self.check_mic_loopback()]
-            results.append(self.check_tv())
-            results.append(self.check_speech())
-            results.append(self.check_tv_control())
+        print("\n== Startup check results ==")
+        for r in results:
+            status = {True: "PASS", False: "FAIL", None: "SKIP"}[r.passed]
+            print(f"  {status}  {r.name}: {r.detail}")
 
-            print("\n== Startup check results ==")
-            for r in results:
-                status = {True: "PASS", False: "FAIL", None: "SKIP"}[r.passed]
-                print(f"  {status}  {r.name}: {r.detail}")
-
-            failed = [r.name.split(". ", 1)[1] for r in results if r.passed is False]
-            if not failed:
-                self.say("All checks passed.")
-            else:
-                self.say(f"{len(failed)} of {len(results)} checks failed: {', '.join(failed)}.")
-                if not self.ask_yes_no("Do you want to launch the voice remote anyway?"):
-                    self.say("Please fix the failed checks and run them again. Goodbye.")
-                    return 1
-            self.say("We are launching the voice remote. You can now use your voice to control the TV.")
-        return self.launch()
-
-    def launch(self):
-        if self.args.then:
-            return subprocess.call(shlex.split(self.args.then))
-        print("Startup checks done. (The voice remote app isn't written yet; "
-              "pass --then '<command>' to start it after the checks.)")
-        return 0
-
-
-def main():
-    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    add_common_args(p)
-    p.add_argument("--loopback-seconds", type=float, default=4.0,
-                   help="length of the microphone loopback recording (default: 4)")
-    p.add_argument("--then", default=None, help="command to run after the checks, e.g. the voice remote app")
-    args = p.parse_args()
-    if args.list_devices:
-        print(sd.query_devices())
-        return 0
-
-    checks = StartupChecks(args)
-    try:
-        return checks.run()
-    except KeyboardInterrupt:
-        print("\nStopped.")
-        return 130
-    finally:
-        checks.speaker.stop()
-
-
-if __name__ == "__main__":
-    sys.exit(main())
+        failed = [r.name.split(". ", 1)[1] for r in results if r.passed is False]
+        if not failed:
+            self.say("All checks passed.")
+        else:
+            self.say(f"{len(failed)} of {len(results)} checks failed: {', '.join(failed)}.")
+            if not self.ask_yes_no("Do you want to launch the voice remote anyway?"):
+                self.say("Please fix the failed checks and start again. Goodbye.")
+                return False
+        self.say("We are launching the voice remote. You can now use your voice to control the TV.")
+        return True
