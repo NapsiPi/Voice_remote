@@ -134,6 +134,38 @@ Useful options (`python test/sanity_test.py --help` lists all):
 
 The first local run downloads the Whisper model, so it needs internet once.
 
+### 5. Startup checks (run before the voice remote)
+
+```bash
+source .venv/bin/activate
+python test/startup_checks.py                       # checks only
+python test/startup_checks.py --then "<command>"    # then start the voice remote
+```
+
+The Pi talks you through four checks. **Answer each question by saying "yes" or
+"no"**; you can answer while it is still speaking. It speaks on the TV when the TV is
+on, otherwise on the HAT speaker.
+
+**What you will hear:**
+
+> "Welcome to the voice remote. Before it starts, we will run four quick checks: the
+> microphone, the TV connection, speech recognition, and TV control. Answer each
+> question by saying yes or no."
+
+| # | Check | What happens | Passes when |
+|---|-------|--------------|-------------|
+| 1 | Microphone loopback | "When I say go, talk for a few seconds." It records 4 s and plays it back. | Sound was captured and you say **yes** to "Did you hear yourself clearly?" |
+| 2 | TV connection | Looks for the TV on HDMI and asks it over CEC whether it's on. If it's in standby, asks you to turn it on. | Audio switches to the TV and you say **yes** to "Can you hear it from the TV?" |
+| 3 | Speech recognition | "Please say a short sentence." Whisper transcribes it. | You say **yes** to "I heard: …. Is that right?" |
+| 4 | TV control | Sends volume up ×2 then down ×2 to the TV over HDMI-CEC. Skipped if check 2 failed. | You say **yes** to "Did the TV volume go up and then back down?" |
+
+At the end it prints a PASS/FAIL/SKIP table. If everything passed it says "We are
+launching the voice remote." If something failed, it names the failed checks and
+asks whether to launch anyway.
+
+`--loopback-seconds` changes the recording length. All the sanity-test options
+(`--model`, `--output-device`, `--no-cec`, ...) work here too.
+
 ### Troubleshooting
 
 | Symptom | Fix |
@@ -143,6 +175,8 @@ The first local run downloads the Whisper model, so it needs internet once.
 | The reply interrupts itself | The HAT speaker is picked up by its own mics: use headphones, or raise `--barge-in-factor` |
 | Whisper prints text you didn't say on silence | Known Whisper behaviour on noise; raise `--threshold-factor` |
 | Audio stays on the HAT with the TV on | Check `[audio] Output -> ...` in the log for the reason; enable SIMPLINK on the TV, or try `--no-cec` |
+| Check 4 fails: TV volume doesn't change | Enable SIMPLINK on the LG TV. Some TVs ignore volume keys from a playback device; the printed detail shows whether the TV answered CEC at all |
+| `cec-ctl` permission denied | Add your user to the `video` group: `sudo usermod -aG video $USER`, then log in again |
 | `aplay: ... Device or resource busy` | Another sound server (e.g. PipeWire on the desktop image) holds the device; run from the Lite image or stop it |
 
 ## Usage

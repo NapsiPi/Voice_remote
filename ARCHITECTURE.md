@@ -44,6 +44,12 @@ All speech output goes through one router, which picks the device before each pl
 
 If `aplay` fails on the TV device, the router drops to the HAT for 60 s.
 
+### 5. Startup checks (`test/startup_checks.py`)
+Runs before the voice remote: mic loopback, TV connection, speech recognition and TV
+control (CEC volume up/down). Each check is confirmed by a spoken yes/no, transcribed
+by Whisper. `--then` starts the remote afterwards. It reuses the sanity test's
+building blocks (`build_audio`, `record_utterance`, `speak_with_barge_in`).
+
 ## Data flow
 
 _TBD_
@@ -56,3 +62,4 @@ _Each decision is recorded here when it is made._
 |---|------|----------|
 | 1 | 2026-11-01 | Hardware bring-up uses a Python sanity test (`test/sanity_test.py`): Whisper speech-to-text (local `faster-whisper` by default, OpenAI Whisper API optional), `espeak-ng` text-to-speech, and energy-based voice detection with barge-in. This only proves the audio path works; the language for the remote itself is not decided yet. |
 | 2 | 2026-11-01 | The HAT is used for microphone input only, and output follows the TV: TV speakers when it is connected and on, the HAT speaker otherwise. TV power is read over HDMI-CEC with `cec-ctl` (Linux CEC framework), because the HDMI hotplug signal often stays "connected" when the TV is in standby. |
+| 3 | 2026-11-01 | The voice remote launches only after four spoken startup checks (mic loopback, TV connection, speech recognition, TV control), each confirmed by the user saying yes or no. If any fail, the user is asked whether to launch anyway. |
