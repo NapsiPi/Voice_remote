@@ -3,7 +3,7 @@
 | ID | Title | Found in | Severity | Status |
 |----|-------|----------|----------|--------|
 | BUG-001 | Speech never plays on the TV; HDMI audio reported as not available | v0.1.0 | High | Fixed (awaiting Pi verification) |
-| BUG-002 | CEC volume up/down has no effect on the LG TV (light remote) | v0.1.0 | Medium | Open |
+| BUG-002 | CEC volume up/down has no effect on the LG TV (light remote) | v0.1.0 | Medium | Open: diagnostics added, needs Pi output |
 | BUG-003 | Startup checks don't wait for the spoken yes/no answer, so the voice app never starts | v0.1.0 | High | Fixed (awaiting Pi verification) |
 | BUG-004 | Barge-in triggers incorrectly; aplay "Interrupted system call" breaks speaker audio | v0.1.0 | Medium | Fixed (awaiting Pi verification) |
 
@@ -45,6 +45,17 @@ only after it is verified on the Pi.
 - **Fix plan:** report the TV's answer to each key (acknowledged, not acknowledged) and
   add a raw CEC debug mode, so the cause can be confirmed on the Pi. If LG ignores CEC
   volume, control volume another way.
+- **Diagnostics (branch `bugfix/v0.1.0-bugs`):** every key now prints `sent`, `not
+  acknowledged` or `failed`, with its CEC code. `light_remote.py --cec-debug` prints
+  each `cec-ctl` command and its full output. The startup screen shows how to watch
+  the TV's replies: `cec-ctl -d /dev/cec0 -M`.
+- **Next step:** run `python3 test/light_remote.py --cec-debug` with the monitor open in
+  a second terminal, press `+` and `-`, and share both outputs:
+  - `not acknowledged`: the message never reaches the TV.
+  - `sent` plus `FEATURE_ABORT` in the monitor: the TV refuses CEC volume.
+  - `sent` with no reply: the TV silently ignores it. LG TVs often take volume only
+    from an audio system. The fallback would then be LG's network control API (webOS)
+    over Wi-Fi/Ethernet.
 
 ## BUG-003: Startup checks don't wait for the spoken yes/no answer, so the voice app never starts
 - **Found in:** v0.1.0, `test/startup_checks.py`

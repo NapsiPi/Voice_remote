@@ -167,7 +167,7 @@ class StartupChecks:
         sent = True
         for key in [UI_VOLUME_UP, UI_VOLUME_UP, UI_VOLUME_DOWN, UI_VOLUME_DOWN]:
             time.sleep(0.6)
-            sent = cec.press(key) and sent
+            sent = cec.press(key) == "sent" and sent
         worked = self.ask_yes_no("Did the TV volume go up and then back down?")
         if not worked:
             self.say("Make sure SIMPLINK, LG's HDMI CEC setting, is turned on in the TV settings.")

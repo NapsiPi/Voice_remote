@@ -65,12 +65,12 @@ def check_hat():
     return card
 
 
-def check_tv():
+def check_tv(cec_debug):
     ports = connected_hdmi_ports()
     if not ports:
         print("  FAIL  No TV connected on HDMI")
         return None
-    cec = Cec(ports[0])
+    cec = Cec(ports[0], debug=cec_debug)
     if not cec.available:
         print(f"  FAIL  TV on HDMI {ports[0]}, but CEC is unavailable ({cec.dev} or cec-ctl missing; "
               "run setup_test_env.sh --light)")
@@ -81,6 +81,8 @@ def check_tv():
               "Keys are still sent.")
     else:
         print(f"  PASS  TV on HDMI {ports[0]} answers CEC (name: {name or '?'}, power: {power or '?'})")
+    print(f"  INFO  To see the TV's replies (e.g. FEATURE_ABORT for ignored keys), run in a second "
+          f"terminal: cec-ctl -d {cec.dev} -M")
     return cec
 
 
@@ -141,7 +143,7 @@ def key_loop(card, cec, loopback_seconds):
                 toggle_power(cec)
             elif key in KEYMAP:
                 label, code = KEYMAP[key]
-                print(f"{label:<13} {'sent' if cec.press(code) else 'FAILED'}")
+                print(f"{label:<13} {cec.press(code)} (code {code:#04x})")
     finally:
         termios.tcsetattr(fd, termios.TCSADRAIN, saved)
 
@@ -149,13 +151,15 @@ def key_loop(card, cec, loopback_seconds):
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--loopback-seconds", type=int, default=3, help="length of the t-key mic test (default: 3)")
+    p.add_argument("--cec-debug", action="store_true",
+                   help="print every cec-ctl command and its full output (for BUG-002 reports)")
     args = p.parse_args()
     if not sys.stdin.isatty():
         sys.exit("Run this in a terminal (on the Pi or over SSH): it reads single key presses.")
 
     print("== Light test: hardware checks ==")
     card = check_hat()
-    cec = check_tv()
+    cec = check_tv(args.cec_debug)
     try:
         key_loop(card, cec, args.loopback_seconds)
     except KeyboardInterrupt:

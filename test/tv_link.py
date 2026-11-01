@@ -59,18 +59,24 @@ def alsa_card(pattern):
 class Cec:
     """HDMI-CEC on one HDMI port. Queries return None when CEC is unavailable or the TV is silent."""
 
-    def __init__(self, port):
+    def __init__(self, port, debug=False):
         self.dev = f"/dev/cec{port}"
         self.available = bool(shutil.which("cec-ctl")) and Path(self.dev).exists()
+        self.debug = debug  # print every cec-ctl command and its full output
         self._registered = False
 
     def _cec_ctl(self, *args, timeout=5):
+        cmd = ["cec-ctl", "-d", self.dev, *args]
         try:
-            out = subprocess.run(["cec-ctl", "-d", self.dev, *args],
-                                 capture_output=True, text=True, timeout=timeout)
-        except (OSError, subprocess.TimeoutExpired):
+            out = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        except (OSError, subprocess.TimeoutExpired) as e:
+            if self.debug:
+                print(f"[cec] $ {' '.join(cmd)}\n[cec] {e}")
             return None
-        return out.stdout if out.returncode == 0 else None
+        text = out.stdout + out.stderr
+        if self.debug:
+            print(f"[cec] $ {' '.join(cmd)}  (exit {out.returncode})\n{text.rstrip()}")
+        return text if out.returncode == 0 else None
 
     def _send(self, *args):
         if not self.available:
@@ -92,9 +98,16 @@ class Cec:
         return m.group(1).strip() if m else None
 
     def press(self, code):
-        """Send one remote-control key press and release (a UI_* code)."""
-        return self._send("--user-control-pressed", f"ui-cmd={code:#04x}",
-                          "--user-control-released") is not None
+        """Send one remote-control key press and release (a UI_* code).
+
+        Returns 'sent' (the TV acknowledged the message, though it may still ignore the
+        key), 'not acknowledged' (the TV didn't take it) or 'failed' (cec-ctl error)."""
+        out = self._send("--user-control-pressed", f"ui-cmd={code:#04x}", "--user-control-released")
+        if out is None:
+            return "failed"
+        if re.search(r"not acknowledged|\bnack\b", out, re.IGNORECASE):
+            return "not acknowledged"
+        return "sent"
 
     def power_on(self):
         """Wake the TV and switch it to this input."""

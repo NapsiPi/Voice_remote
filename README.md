@@ -187,6 +187,14 @@ Then each key press goes to the TV over CEC:
 Pass: the HAT and TV checks pass, and the TV reacts to the keys. If the TV ignores
 the keys, enable SIMPLINK in the LG TV settings.
 
+Each key prints how the TV took it: `sent` (acknowledged), `not acknowledged` or
+`failed`. To debug a key the TV ignores (e.g. volume, BUG-002):
+
+```bash
+python3 test/light_remote.py --cec-debug    # prints every cec-ctl command and its output
+cec-ctl -d /dev/cec0 -M                     # in a second terminal: shows the TV's replies
+```
+
 ### 4. Run the sanity test (speech in, speech out)
 
 ```bash
