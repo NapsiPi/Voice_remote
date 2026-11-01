@@ -23,13 +23,18 @@ bash test/setup_test_env.sh                   # apt packages + .venv with test/r
 bash test/mic_check.sh [seconds] [card]       # ALSA-only record/playback check of the WM8960 HAT
 source .venv/bin/activate && python test/sanity_test.py [--help]   # Whisper STT -> espeak-ng echo, with barge-in
 python test/startup_checks.py [--then "<cmd>"]                      # 4 spoken pre-launch checks, yes/no answers
+
+bash test/setup_test_env.sh --light && python3 test/light_remote.py  # keyboard -> CEC remote, no venv/Whisper
 ```
+
+`tv_link.py` and `light_remote.py` must stay standard-library-only, so the light test needs no pip packages.
 
 Module layout in `test/`:
 - `tv_link.py`: TV detection (DRM status, `/proc/asound/cards`) and HDMI-CEC through `cec-ctl`.
 - `audio_output.py`: `AudioRouter`, which chooses the TV or the HAT speaker.
 - `sanity_test.py`: the shared building blocks (`add_common_args`, `build_audio`, `Mic`, `Speaker`, the VAD, barge-in) plus its own echo loop.
 - `startup_checks.py`: imports those building blocks.
+- `light_remote.py`: the keyboard remote; uses only `tv_link.py`.
 
 The scripts import each other as plain modules, so run them from `test/` or as `python test/<script>.py`. All speech output must go through `Speaker`, which routes via `AudioRouter`, so it follows the TV.
 

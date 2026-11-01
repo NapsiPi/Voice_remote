@@ -13,6 +13,23 @@ from pathlib import Path
 CEC_TV = "0"  # CEC logical address of the TV
 OSD_NAME = "VoiceRemote"
 
+# CEC "User Control" codes (HDMI-CEC spec), sent as remote-control key presses.
+UI_SELECT = 0x00
+UI_UP = 0x01
+UI_DOWN = 0x02
+UI_LEFT = 0x03
+UI_RIGHT = 0x04
+UI_ROOT_MENU = 0x09  # Home on most TVs
+UI_EXIT = 0x0D       # Back
+UI_NUMBER_0 = 0x20   # digits are 0x20..0x29
+UI_CHANNEL_UP = 0x30
+UI_CHANNEL_DOWN = 0x31
+UI_VOLUME_UP = 0x41
+UI_VOLUME_DOWN = 0x42
+UI_MUTE = 0x43
+UI_PLAY = 0x44
+UI_PAUSE = 0x46
+
 
 def connected_hdmi_ports():
     """HDMI port numbers (0 or 1) that have a display attached."""
@@ -74,6 +91,14 @@ class Cec:
         m = re.search(r"name:\s*(.+)", self._send("--give-osd-name") or "")
         return m.group(1).strip() if m else None
 
-    def press(self, key):
-        """Send one remote-control key, named as cec-ctl's ui-cmd (e.g. volume-up)."""
-        return self._send("--user-control-pressed", f"ui-cmd={key}", "--user-control-released") is not None
+    def press(self, code):
+        """Send one remote-control key press and release (a UI_* code)."""
+        return self._send("--user-control-pressed", f"ui-cmd={code:#04x}",
+                          "--user-control-released") is not None
+
+    def power_on(self):
+        """Wake the TV and switch it to this input."""
+        return self._send("--image-view-on") is not None
+
+    def standby(self):
+        return self._send("--standby") is not None

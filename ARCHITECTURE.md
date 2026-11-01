@@ -50,6 +50,12 @@ control (CEC volume up/down). Each check is confirmed by a spoken yes/no, transc
 by Whisper. `--then` starts the remote afterwards. It reuses the sanity test's
 building blocks (`build_audio`, `record_utterance`, `speak_with_barge_in`).
 
+### 6. Light keyboard remote (`test/light_remote.py`)
+Uses only the standard library plus `cec-ctl`/`arecord`/`aplay`, with no speech
+recognition. It checks for the WM8960 card and the TV's CEC link, then maps key
+presses (read in cbreak mode) to CEC user-control codes (`tv_link.UI_*`). Power uses
+`--image-view-on` / `--standby` rather than a key code.
+
 ## Data flow
 
 _TBD_
@@ -64,3 +70,4 @@ _Each decision is recorded here when it is made._
 | 2 | 2026-11-01 | The HAT is used for microphone input only, and output follows the TV: TV speakers when it is connected and on, the HAT speaker otherwise. TV power is read over HDMI-CEC with `cec-ctl` (Linux CEC framework), because the HDMI hotplug signal often stays "connected" when the TV is in standby. |
 | 3 | 2026-11-01 | The voice remote launches only after four spoken startup checks (mic loopback, TV connection, speech recognition, TV control), each confirmed by the user saying yes or no. If any fail, the user is asked whether to launch anyway. |
 | 4 | 2026-11-01 | On 32-bit Pi OS (armhf), speech recognition uses whisper.cpp (C/C++, built from source by `setup_test_env.sh`, run as a CLI per utterance). faster-whisper has no armhf builds, and the owner wants no paid API, so the OpenAI backend is opt-in only. |
+| 5 | 2026-11-01 | A light test (`test/light_remote.py`) checks the hardware with no speech stack: HAT detected, TV reachable over CEC, keyboard keys sent as CEC remote commands. CEC keys are sent as numeric user-control codes from the spec, not cec-ctl's key names. |

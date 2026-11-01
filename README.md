@@ -144,6 +144,35 @@ bash test/mic_check.sh 10 2     # 10 s, force sound card 2
 Pass: you hear your own voice from the HAT's speaker or headphone jack.
 Too quiet: run `alsamixer -c <card>`, press F4 and raise the capture levels.
 
+### Light test: keyboard remote, no voice
+
+The fastest way to check the hardware. It needs only Python 3's standard library,
+`alsa-utils` and `v4l-utils`: no venv, no Whisper.
+
+```bash
+bash test/setup_test_env.sh --light     # apt packages only, takes about a minute
+python3 test/light_remote.py            # on the Pi's keyboard or over SSH
+```
+
+At startup it checks:
+- **WM8960 HAT:** the card is detected (`PASS`/`FAIL`).
+- **TV:** connected on HDMI and answering HDMI-CEC (`PASS`/`WARN`/`FAIL`).
+
+Then each key press goes to the TV over CEC:
+
+| Key | TV command | Key | TV command |
+|-----|-----------|-----|-----------|
+| Arrows | Up / Down / Left / Right | Enter | OK |
+| `b`, Backspace | Back | `h` | Home |
+| `+` / `-` | Volume up / down | `m` | Mute |
+| `]` / `[` | Channel up / down | `0`–`9` | Numbers |
+| `>` | Play | Space | Pause |
+| `p` | Power on / standby | `t` | Mic loopback: record 3 s, play on the HAT |
+| `?` | Help | `q` | Quit |
+
+Pass: the HAT and TV checks pass, and the TV reacts to the keys. If the TV ignores
+the keys, enable SIMPLINK in the LG TV settings.
+
 ### 4. Run the sanity test (speech in, speech out)
 
 ```bash

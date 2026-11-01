@@ -25,6 +25,7 @@ from sanity_test import (
     BLOCK_MS, WHISPER_RATE, add_common_args, build_audio, calibrate, normalise,
     record_utterance, resample, rms, speak_with_barge_in, to_wav_bytes,
 )
+from tv_link import UI_VOLUME_DOWN, UI_VOLUME_UP
 
 YES = {"yes", "yeah", "yep", "yup", "correct", "right", "sure", "ok", "okay"}
 NO = {"no", "nope", "nah", "wrong", "incorrect"}
@@ -160,7 +161,7 @@ class StartupChecks:
         self.say("Check four: TV control. Watch the TV volume. "
                  "I will turn it up two steps, then back down.")
         sent = True
-        for key in ["volume-up", "volume-up", "volume-down", "volume-down"]:
+        for key in [UI_VOLUME_UP, UI_VOLUME_UP, UI_VOLUME_DOWN, UI_VOLUME_DOWN]:
             time.sleep(0.6)
             sent = cec.press(key) and sent
         worked = self.ask_yes_no("Did the TV volume go up and then back down?")
