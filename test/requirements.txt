@@ -1,5 +1,5 @@
-# Python packages for test/sanity_test.py
+# Python packages for the scripts in test/, on any Raspberry Pi OS (32- or 64-bit).
+# On 32-bit (armhf) setup_test_env.sh takes numpy from apt (python3-numpy) instead of pip.
 numpy
 sounddevice      # microphone capture (needs the libportaudio2 system package)
-faster-whisper   # local Whisper speech-to-text (default backend)
-openai           # OpenAI Whisper API (only for --backend openai)
+openai           # OpenAI Whisper API (--backend openai)

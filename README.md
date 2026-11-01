@@ -36,14 +36,34 @@ Installed by `test/setup_test_env.sh`:
 | `v4l-utils` | `cec-ctl`, for HDMI-CEC: TV power state and remote-control keys |
 
 ### pip packages
-From `test/requirements.txt`, installed into `.venv`:
+Installed into `.venv` by `test/setup_test_env.sh`:
 
-| Package | Why |
-|---------|-----|
-| `numpy` | Audio buffers |
-| `sounddevice` | Microphone capture |
-| `faster-whisper` | Whisper speech-to-text on the Pi (default) |
-| `openai` | OpenAI Whisper API (only with `--backend openai`) |
+| Package | File | Why |
+|---------|------|-----|
+| `numpy` | `test/requirements.txt` | Audio buffers (from apt `python3-numpy` on 32-bit) |
+| `sounddevice` | `test/requirements.txt` | Microphone capture |
+| `openai` | `test/requirements.txt` | OpenAI Whisper API (`--backend openai`) |
+| `faster-whisper` | `test/requirements-local-whisper.txt` | Whisper on the Pi (default backend), **64-bit only** |
+
+### 32-bit vs 64-bit Raspberry Pi OS
+
+**Use Raspberry Pi OS (64-bit), Bookworm or later.** Check which one you have:
+
+```bash
+dpkg --print-architecture    # arm64 = 64-bit, armhf = 32-bit
+```
+
+Don't rely on `uname -m`: a Pi 5 reports `aarch64` even on the 32-bit OS, because
+its kernel is 64-bit.
+
+| | 64-bit (`arm64`) | 32-bit (`armhf`) |
+|---|---|---|
+| numpy | pip wheel | apt `python3-numpy`, so pip never compiles it |
+| Local Whisper (`faster-whisper`) | Yes (default) | **Not available**: `ctranslate2`/`onnxruntime` have no 32-bit ARM builds |
+| Speech recognition | Offline on the Pi | `--backend openai` with `OPENAI_API_KEY` (needs internet) |
+
+`setup_test_env.sh` detects the architecture and installs the right set. It also
+needs Python 3.10 or newer, which Bookworm provides.
 
 ## Build 101 (getting started)
 
@@ -89,6 +109,9 @@ git clone https://github.com/NapsiPi/Voice_remote.git
 cd Voice_remote
 bash test/setup_test_env.sh
 ```
+
+The script prints the detected architecture, installs the packages, then
+import-checks them. If it ends with `Done.`, the install worked.
 
 ### 3. Check the HAT with plain ALSA (no Python)
 

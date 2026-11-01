@@ -70,7 +70,11 @@ class LocalWhisper:
     """Runs Whisper on the Pi with faster-whisper (offline after the model download)."""
 
     def __init__(self, model_size, language):
-        from faster_whisper import WhisperModel
+        try:
+            from faster_whisper import WhisperModel
+        except ImportError:
+            sys.exit("faster-whisper is not installed. It needs 64-bit Raspberry Pi OS; "
+                     "on 32-bit use --backend openai (see README, Build 101).")
 
         print(f"Loading Whisper model '{model_size}' (the first run downloads it)...")
         self.model = WhisperModel(model_size, device="cpu", compute_type="int8")

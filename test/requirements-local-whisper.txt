@@ -1,0 +1,4 @@
+# Local Whisper speech-to-text (the default --backend local).
+# 64-bit Raspberry Pi OS (arm64) only: its dependencies ctranslate2 and onnxruntime
+# publish no 32-bit ARM (armhf) builds.
+faster-whisper
