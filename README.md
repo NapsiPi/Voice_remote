@@ -92,7 +92,11 @@ doesn't depend on the kernel version. On armhf, `setup_test_env.sh` builds it un
 needs Python 3.10 or newer, which Bookworm provides. On 32-bit it finishes with a
 whisper.cpp smoke test on the bundled `samples/jfk.wav` and prints the time taken.
 
-If whisper.cpp fails to build on 32-bit, try a release tag instead of `master`:
+On 32-bit the script links `libatomic`. Without it, linking fails with
+`undefined reference to '__atomic_fetch_add_8'`. It builds only `whisper-cli`, not the
+other examples (`whisper-bench`, server, ...).
+
+If whisper.cpp still fails to build on 32-bit, try a release tag instead of `master`:
 `WHISPER_CPP_REF=<tag> bash test/setup_test_env.sh` (tags are listed at
 https://github.com/ggml-org/whisper.cpp/tags).
 

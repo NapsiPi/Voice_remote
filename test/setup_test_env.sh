@@ -99,9 +99,17 @@ if [[ $WITH_WHISPER_CPP -eq 1 ]]; then
     # On 32-bit userland with a 64-bit kernel, uname -m says aarch64 and the build would
     # pick 64-bit CPU flags for a 32-bit compiler. setarch makes it report armv7l instead.
     BUILD_PREFIX=()
-    [[ "$ARCH" == "armhf" ]] && BUILD_PREFIX=(setarch linux32)
-    "${BUILD_PREFIX[@]}" cmake -S "$WHISPER_CPP_DIR" -B "$WHISPER_CPP_DIR/build" -DCMAKE_BUILD_TYPE=Release
-    "${BUILD_PREFIX[@]}" cmake --build "$WHISPER_CPP_DIR/build" --config Release -j"$(nproc)"
+    CMAKE_ARGS=(-DCMAKE_BUILD_TYPE=Release)
+    if [[ "$ARCH" == "armhf" ]]; then
+        BUILD_PREFIX=(setarch linux32)
+        # 64-bit atomics (__atomic_fetch_add_8) live in libatomic on 32-bit ARM. Passed as a
+        # standard library so it lands at the end of the link line.
+        CMAKE_ARGS+=(-DCMAKE_C_STANDARD_LIBRARIES=-latomic -DCMAKE_CXX_STANDARD_LIBRARIES=-latomic)
+    fi
+    "${BUILD_PREFIX[@]}" cmake -S "$WHISPER_CPP_DIR" -B "$WHISPER_CPP_DIR/build" "${CMAKE_ARGS[@]}"
+    # Only the CLI the tests use ('main' in older releases), not every example (bench, server, ...).
+    "${BUILD_PREFIX[@]}" cmake --build "$WHISPER_CPP_DIR/build" --config Release -j"$(nproc)" --target whisper-cli \
+        || "${BUILD_PREFIX[@]}" cmake --build "$WHISPER_CPP_DIR/build" --config Release -j"$(nproc)" --target main
 
     for model in $WHISPER_CPP_MODELS; do
         if [[ ! -f "$WHISPER_CPP_DIR/models/ggml-$model.bin" ]]; then
