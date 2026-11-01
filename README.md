@@ -4,8 +4,10 @@ A Raspberry Pi voice remote for a TV. A microphone on an audio HAT picks up spok
 commands, the Pi recognises them, and the matching control command goes to the TV
 over the micro-HDMI connection.
 
-> Status: hardware bring-up. A sanity test for the microphone HAT is available
-> (see [Build 101](#build-101-getting-started)); the remote itself is not written yet.
+> Status: **v0.1.1**. Hardware bring-up is complete and verified on the Pi: HAT mic,
+> TV audio over HDMI, TV power over CEC, and TV control over webOS. The test tools are
+> in [Build 101](#build-101-getting-started). Release history is in
+> [RELEASE.md](RELEASE.md), and open bugs are in [BUGS.md](BUGS.md).
 
 ## Requirements
 
@@ -14,7 +16,7 @@ over the micro-HDMI connection.
 |------|-------|------|
 | Single-board computer | Raspberry Pi 5 | Runs voice capture, recognition and TV control |
 | Audio HAT | WM8960 Audio HAT (WM8960 codec, on-board microphones) | Microphone input to the Pi |
-| TV | LG (exact model TBD) | Target device, connected to the Pi by micro-HDMI |
+| TV | LG UJ635V (webOS) | Target device: micro-HDMI for picture, sound and power (CEC); Wi-Fi for remote control (webOS) |
 | Cable | Micro-HDMI to HDMI | Pi 5 to TV link |
 
 ### Software
@@ -171,8 +173,24 @@ python3 test/light_remote.py            # on the Pi's keyboard or over SSH
 At startup it checks:
 - **WM8960 HAT:** the card is detected (`PASS`/`FAIL`).
 - **TV:** connected on HDMI and answering HDMI-CEC (`PASS`/`WARN`/`FAIL`).
+- **webOS:** the LG TV is found on the network and paired (`PASS`/`FAIL`/`INFO`).
 
-Then each key press goes to the TV over CEC:
+**How the TV is controlled:** the LG TV ignores CEC remote keys (BUG-002), so:
+- **Power** goes over HDMI-CEC.
+- **All other keys** go over **webOS on the local network**. Without webOS, they fall
+  back to CEC.
+
+**One-time LG TV setup for webOS control:**
+1. Put the TV on the same Wi-Fi/LAN as the Pi.
+2. On the TV, turn on **Settings → Network → LG Connect Apps**.
+3. Turn the TV on and run the light remote. The TV shows a pairing prompt; accept it
+   with the TV remote within 60 s.
+
+The pairing key and the TV's address are saved in `~/.config/voice_remote/lgtv.json`.
+Delete that file to pair again. The TV is found automatically; if it isn't, pass
+`--tv-ip <address>` (shown in the TV's network settings).
+
+Each key press then goes to the TV:
 
 | Key | TV command | Key | TV command |
 |-----|-----------|-----|-----------|
@@ -184,8 +202,16 @@ Then each key press goes to the TV over CEC:
 | `p` | Power on / standby | `t` | Mic loopback: record 3 s, play on the HAT |
 | `?` | Help | `q` | Quit |
 
-Pass: the HAT and TV checks pass, and the TV reacts to the keys. If the TV ignores
-the keys, enable SIMPLINK in the LG TV settings.
+Pass: the HAT, TV and webOS checks pass, and the TV reacts to the keys. Each key
+prints how it was sent (`sent via webOS`, or the CEC result). `--no-webos` sends
+keys over CEC only, and `--webos-debug` prints every webOS message.
+
+To debug CEC itself:
+
+```bash
+python3 test/light_remote.py --cec-debug    # prints every cec-ctl command and its output
+cec-ctl -d /dev/cec0 -M                     # in a second terminal: shows the TV's replies
+```
 
 ### 4. Run the sanity test (speech in, speech out)
 
@@ -218,7 +244,8 @@ Useful options (`python test/sanity_test.py --help` lists all):
 | `--model tiny.en` / `base.en` | Smaller is faster, larger is more accurate |
 | `--backend openai` | Paid OpenAI Whisper API; needs `--with-openai` setup and `OPENAI_API_KEY` |
 | `--threshold-factor 4` | Less sensitive to background noise |
-| `--no-barge-in` / `--barge-in-factor 3` | Stop the reply interrupting itself |
+| `--barge-in auto\|on\|off` | Talking interrupts replies. `auto` (default) enables it only when audio plays on the TV, because the HAT speaker is too close to the mics |
+| `--barge-in-factor 3` | Barge-in needs louder speech |
 
 The first local run downloads the Whisper model, so it needs internet once.
 
@@ -231,7 +258,8 @@ python test/startup_checks.py --then "<command>"    # then start the voice remot
 ```
 
 The Pi talks you through four checks. **Answer each question by saying "yes" or
-"no"**; you can answer while it is still speaking. It speaks on the TV when the TV is
+"no" after it finishes speaking.** The log shows `[listening] say yes or no` when
+it's ready. It waits 8 s and asks up to three times. It speaks on the TV when the TV is
 on, otherwise on the HAT speaker.
 
 **What you will hear:**
@@ -245,7 +273,7 @@ on, otherwise on the HAT speaker.
 | 1 | Microphone loopback | "When I say go, talk for a few seconds." It records 4 s and plays it back. | Sound was captured and you say **yes** to "Did you hear yourself clearly?" |
 | 2 | TV connection | Looks for the TV on HDMI and asks it over CEC whether it's on. If it's in standby, asks you to turn it on. | Audio switches to the TV and you say **yes** to "Can you hear it from the TV?" |
 | 3 | Speech recognition | "Please say a short sentence." Whisper transcribes it. | You say **yes** to "I heard: …. Is that right?" |
-| 4 | TV control | Sends volume up ×2 then down ×2 to the TV over HDMI-CEC. Skipped if check 2 failed. | You say **yes** to "Did the TV volume go up and then back down?" |
+| 4 | TV control | Sends volume up ×2 then down ×2 over webOS (network), or over HDMI-CEC without webOS. Skipped if neither reaches the TV. | You say **yes** to "Did the TV volume go up and then back down?" |
 
 At the end it prints a PASS/FAIL/SKIP table. If everything passed it says "We are
 launching the voice remote." If something failed, it names the failed checks and
@@ -260,10 +288,12 @@ asks whether to launch anyway.
 |---------|-----|
 | `No input device matching 'wm8960'` | Card not loaded: redo step 1, or pick a device from `--list-devices` |
 | It never starts listening | Mic too quiet: raise capture in `alsamixer`, or lower `--threshold-factor` |
-| The reply interrupts itself | The HAT speaker is picked up by its own mics: use headphones, or raise `--barge-in-factor` |
+| The reply interrupts itself, `aplay: ... Interrupted system call` | Barge-in stopped playback because the mics heard the HAT speaker. `--barge-in auto` (default) now keeps barge-in off on the HAT speaker; with `--barge-in on`, raise `--barge-in-factor` |
 | Whisper prints text you didn't say on silence | Known Whisper behaviour on noise; raise `--threshold-factor` |
-| Audio stays on the HAT with the TV on | Check `[audio] Output -> ...` in the log for the reason; enable SIMPLINK on the TV, or try `--no-cec` |
-| Check 4 fails: TV volume doesn't change | Enable SIMPLINK on the LG TV. Some TVs ignore volume keys from a playback device; the printed detail shows whether the TV answered CEC at all |
+| Audio stays on the HAT with the TV on | Run `bash test/hdmi_audio_check.sh` (TV seen? HDMI audio card present? test sound plays?). Check `[audio] Output -> ...` in the log for the reason; enable SIMPLINK on the TV, or try `--no-cec` |
+| No `vc4hdmi` card in `/proc/asound/cards` | Remove `,noaudio` from `dtoverlay=vc4-kms-v3d` in `/boot/firmware/config.txt` and reboot |
+| Check 4 fails: TV volume doesn't change | Check the log says `webOS TV ... paired and connected`. If not, turn on LG Connect Apps, put the TV on the Pi's network, or pass `--tv-ip`. Over CEC alone, the LG TV ignores volume keys (BUG-002) |
+| `webOS TV at ...: ... refused` / pairing fails | Turn the TV on first, then accept the prompt within 60 s. If it was paired before, delete `~/.config/voice_remote/lgtv.json` and pair again |
 | `cec-ctl` permission denied | Add your user to the `video` group: `sudo usermod -aG video $USER`, then log in again |
 | `aplay: ... Device or resource busy` | Another sound server (e.g. PipeWire on the desktop image) holds the device; run from the Lite image or stop it |
 
@@ -276,3 +306,5 @@ _TBD: the voice remote itself is not written yet._
 - [ARCHITECTURE.md](ARCHITECTURE.md): system design and data flow
 - [DEVELOPER_NOTES.md](DEVELOPER_NOTES.md): running notes and reminders for developers
 - [SKILLS.md](SKILLS.md): skills and roles used on this project
+- [RELEASE.md](RELEASE.md): release notes per tagged version
+- [BUGS.md](BUGS.md): known bugs, with the release they were found in and their status

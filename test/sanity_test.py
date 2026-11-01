@@ -30,10 +30,12 @@ import sounddevice as sd
 from audio_output import AudioRouter
 
 WHISPER_RATE = 16000
+HDMI_RATE = 48000
 BLOCK_MS = 30
 START_BLOCKS = 3   # consecutive loud blocks (~90 ms) that count as speech starting
 BARGE_BLOCKS = 5   # consecutive loud blocks (~150 ms) that interrupt playback
 PREROLL_S = 0.3    # audio kept from before speech starts, so the first syllable isn't clipped
+MIN_STT_S = 1.5    # whisper.cpp ignores input under 1 s; pad short answers like "yes" (BUG-003)
 EXIT_PHRASE = "stop test"
 WHISPER_CPP_DIR = Path(__file__).resolve().parent.parent / "third_party" / "whisper.cpp"
 DEFAULT_MODELS = {"local": "base.en", "whispercpp": "tiny.en"}
@@ -65,6 +67,29 @@ def to_wav_bytes(audio, rate):
         wf.setframerate(rate)
         wf.writeframes(pcm.tobytes())
     return buf.getvalue()
+
+
+def read_wav_mono(path):
+    """16-bit WAV file -> (mono float32 samples, sample rate)."""
+    with wave.open(str(path), "rb") as wf:
+        rate, channels = wf.getframerate(), wf.getnchannels()
+        data = wf.readframes(wf.getnframes())
+    audio = np.frombuffer(data, dtype=np.int16).astype(np.float32) / 32768
+    if channels > 1:
+        audio = audio.reshape(-1, channels).mean(axis=1)
+    return audio, rate
+
+
+def write_hdmi_wav(src, dst):
+    """HDMI audio on the Pi only takes 2-channel audio at the TV's rates (BUG-001):
+    convert mono espeak-ng/loopback WAVs to stereo 48 kHz."""
+    audio, rate = read_wav_mono(src)
+    pcm = (np.clip(resample(audio, rate, HDMI_RATE), -1.0, 1.0) * 32767).astype(np.int16)
+    with wave.open(str(dst), "wb") as wf:
+        wf.setnchannels(2)
+        wf.setsampwidth(2)
+        wf.setframerate(HDMI_RATE)
+        wf.writeframes(np.repeat(pcm, 2).tobytes())  # same sample to left and right
 
 
 def normalise(text):
@@ -116,6 +141,9 @@ class WhisperCpp:
         print(f"whisper.cpp: {self.binary}, model {self.model.name}")
 
     def transcribe(self, audio):
+        short = int(MIN_STT_S * WHISPER_RATE) - len(audio)
+        if short > 0:
+            audio = np.pad(audio, (0, short))
         self.wav.write_bytes(to_wav_bytes(audio, WHISPER_RATE))
         out = subprocess.run(
             [str(self.binary), "-m", str(self.model), "-f", str(self.wav),
@@ -202,6 +230,7 @@ class Speaker:
         self.voice = voice
         self.speed = speed
         self.wav = Path(tempfile.gettempdir()) / "voice_remote_tts.wav"
+        self.hdmi_wav = Path(tempfile.gettempdir()) / "voice_remote_hdmi.wav"
         self.proc = None
 
     def start(self, text):
@@ -213,34 +242,55 @@ class Speaker:
 
     def play(self, wav):
         output = self.router.current()
-        self.proc = self._aplay(output.device, wav)
-        if output.name == "tv":
-            # HDMI audio can be missing even with the TV on; fall back to the HAT if aplay dies.
-            time.sleep(0.3)
-            if self.proc.poll() not in (None, 0):
-                print("[audio] TV HDMI audio failed, switching to the HAT speaker")
-                self.router.tv_failed()
-                self.proc = self._aplay(self.router.current().device, wav)
+        if not output.device.startswith("hdmi:"):
+            self.proc = self._aplay(output.device, wav)
+            return
+
+        write_hdmi_wav(wav, self.hdmi_wav)
+        self.proc = self._aplay(output.device, self.hdmi_wav)
+        # HDMI audio can still fail with the TV on; fall back to the HAT if aplay dies.
+        time.sleep(0.3)
+        code = self.proc.poll()
+        if code not in (None, 0):
+            error = self.proc.stderr.read().strip() or f"aplay exit code {code}"
+            print(f"[audio] TV HDMI audio failed on {output.device}: {error}")
+            self.router.tv_failed(error)
+            self.proc = self._aplay(self.router.current().device, wav)
 
     @staticmethod
-    def _aplay(device, wav):
+    def _aplay(device, wav, capture_errors=True):
         cmd = ["aplay", "-q"]
         if device:
             cmd += ["-D", device]
         cmd.append(str(wav))
-        return subprocess.Popen(cmd)
+        return subprocess.Popen(cmd, stderr=subprocess.PIPE if capture_errors else None, text=True)
+
+    def _report_error(self):
+        if self.proc.returncode and self.proc.stderr:
+            error = self.proc.stderr.read().strip()
+            if error:
+                print(f"[audio] aplay: {error}", file=sys.stderr)
 
     def playing(self):
-        return self.proc is not None and self.proc.poll() is None
+        if self.proc is None:
+            return False
+        if self.proc.poll() is None:
+            return True
+        self._report_error()
+        return False
 
     def wait(self):
         if self.proc is not None:
             self.proc.wait()
+            self._report_error()
 
     def stop(self):
-        if self.playing():
+        """Stop playback on purpose (barge-in, Ctrl+C). aplay killed mid-write reports
+        'Interrupted system call'; that's expected here, so its stderr is dropped."""
+        if self.proc is not None and self.proc.poll() is None:
             self.proc.terminate()
             self.proc.wait()
+        self.proc = None
 
 
 def find_input_device(hint):
@@ -292,10 +342,20 @@ def record_utterance(mic, threshold, args, preroll, wait_s=None):
     return np.concatenate(frames)
 
 
+def barge_in_enabled(args, speaker):
+    if args.barge_in == "auto":
+        # There's no echo cancellation: the HAT speaker sits next to the mics, so our own
+        # voice would trigger barge-in and kill playback mid-write (BUG-004). The TV is far
+        # enough away.
+        return speaker.router.current().name == "tv"
+    return args.barge_in == "on"
+
+
 def speak_with_barge_in(mic, speaker, text, threshold, args):
     """Speak text. Returns the interrupting speech blocks on barge-in, else None."""
     mic.flush()
     speaker.start(text)
+    enabled = barge_in_enabled(args, speaker)
     started = time.monotonic()
     history = collections.deque(maxlen=int(PREROLL_S * 1000 / BLOCK_MS))
     loud_run = 0
@@ -305,7 +365,7 @@ def speak_with_barge_in(mic, speaker, text, threshold, args):
         except queue.Empty:
             continue
         # Ignore the first moments of playback, when our own voice hits the mics hardest.
-        if not args.barge_in or time.monotonic() - started < args.barge_in_delay:
+        if not enabled or time.monotonic() - started < args.barge_in_delay:
             continue
         history.append(block)
         loud_run = loud_run + 1 if rms(block) > threshold * args.barge_in_factor else 0
@@ -335,6 +395,8 @@ def add_common_args(p):
     p.add_argument("--output-device", default=None,
                    help="fixed ALSA device for speech, e.g. plughw:CARD=wm8960soundcard,DEV=0 "
                         "(default: automatic, TV when connected and on, else the HAT speaker)")
+    p.add_argument("--tv-ip", default=None,
+                   help="LG TV IP address for webOS control (default: last used, else auto-discover)")
     p.add_argument("--no-cec", dest="cec", action="store_false",
                    help="don't ask the TV for its power state over HDMI-CEC; a connected TV counts as on")
     p.add_argument("--rate", type=int, default=None, help="capture sample rate (default: device default)")
@@ -346,7 +408,9 @@ def add_common_args(p):
     p.add_argument("--min-threshold", type=float, default=0.01, help="lowest speech threshold, RMS (default: 0.01)")
     p.add_argument("--silence-ms", type=int, default=800, help="silence that ends an utterance (default: 800)")
     p.add_argument("--max-seconds", type=float, default=15.0, help="longest utterance (default: 15)")
-    p.add_argument("--no-barge-in", dest="barge_in", action="store_false", help="disable barge-in")
+    p.add_argument("--barge-in", choices=["auto", "on", "off"], default="auto",
+                   help="interrupt replies by talking: auto (default) = only when audio plays on the TV, "
+                        "not on the HAT speaker next to the mics")
     p.add_argument("--barge-in-factor", type=float, default=2.0,
                    help="barge-in needs speech this many times louder than the speech threshold (default: 2.0)")
     p.add_argument("--barge-in-delay", type=float, default=0.4,

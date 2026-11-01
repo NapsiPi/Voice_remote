@@ -59,18 +59,26 @@ def alsa_card(pattern):
 class Cec:
     """HDMI-CEC on one HDMI port. Queries return None when CEC is unavailable or the TV is silent."""
 
-    def __init__(self, port):
+    def __init__(self, port, debug=False):
         self.dev = f"/dev/cec{port}"
         self.available = bool(shutil.which("cec-ctl")) and Path(self.dev).exists()
+        self.debug = debug  # print every cec-ctl command and its full output
+        self.last_output = ""  # output of the last cec-ctl call, even when it failed
         self._registered = False
 
     def _cec_ctl(self, *args, timeout=5):
+        cmd = ["cec-ctl", "-d", self.dev, *args]
         try:
-            out = subprocess.run(["cec-ctl", "-d", self.dev, *args],
-                                 capture_output=True, text=True, timeout=timeout)
-        except (OSError, subprocess.TimeoutExpired):
+            out = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        except (OSError, subprocess.TimeoutExpired) as e:
+            if self.debug:
+                print(f"[cec] $ {' '.join(cmd)}\n[cec] {e}")
             return None
-        return out.stdout if out.returncode == 0 else None
+        text = out.stdout + out.stderr
+        self.last_output = text
+        if self.debug:
+            print(f"[cec] $ {' '.join(cmd)}  (exit {out.returncode})\n{text.rstrip()}")
+        return text if out.returncode == 0 else None
 
     def _send(self, *args):
         if not self.available:
@@ -92,9 +100,16 @@ class Cec:
         return m.group(1).strip() if m else None
 
     def press(self, code):
-        """Send one remote-control key press and release (a UI_* code)."""
-        return self._send("--user-control-pressed", f"ui-cmd={code:#04x}",
-                          "--user-control-released") is not None
+        """Send one remote-control key press and release (a UI_* code).
+
+        Returns 'sent' (the TV acknowledged the message, though it may still ignore the
+        key), 'not acknowledged' (the TV didn't take it) or 'failed' (cec-ctl error)."""
+        self.last_output = ""
+        out = self._send("--user-control-pressed", f"ui-cmd={code:#04x}", "--user-control-released")
+        # cec-ctl may exit non-zero when the TV doesn't acknowledge, so check its output either way.
+        if re.search(r"not acknowledged|\bnack\b", out or self.last_output, re.IGNORECASE):
+            return "not acknowledged"
+        return "failed" if out is None else "sent"
 
     def power_on(self):
         """Wake the TV and switch it to this input."""

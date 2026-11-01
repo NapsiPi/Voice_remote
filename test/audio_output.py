@@ -31,6 +31,7 @@ class AudioRouter:
         self._cached = None
         self._checked_at = 0.0
         self._tv_failed_until = 0.0
+        self._tv_error = ""
         self._last_name = None
 
     def current(self):
@@ -46,9 +47,10 @@ class AudioRouter:
     def refresh(self):
         self._cached = None
 
-    def tv_failed(self):
+    def tv_failed(self, error=""):
         """aplay could not use the TV's HDMI audio: fall back to the HAT for a while."""
         self._tv_failed_until = time.monotonic() + TV_FAILED_HOLD_S
+        self._tv_error = error
         self._cached = None
 
     def cec(self, port):
@@ -72,7 +74,7 @@ class AudioRouter:
         if port is None:
             reason = "no TV connected"
         elif now < self._tv_failed_until:
-            reason = "TV HDMI audio failed recently"
+            reason = f"TV HDMI audio failed recently ({self._tv_error or 'no error text'})"
         elif power not in TV_POWER_ON:
             reason = f"TV on HDMI {port} is {power}"
         else:
