@@ -11,6 +11,14 @@
 Statuses: Open, then Fixed (awaiting Pi verification), then Verified. A bug is closed
 only after it is verified on the Pi.
 
+**Open bugs (as of v0.2.0 development on `dev`):**
+- **BUG-005** (Low): spoken replies sound robotic (espeak-ng). Planned fix: Piper or Pico.
+
+BUG-001 to BUG-004 were fixed and verified in v0.1.1 (summary in
+[DEVELOPER_NOTES.md](DEVELOPER_NOTES.md)). File paths in the bug details below refer
+to the layout of the version where they were found. In v0.2.0, `test/*.py` modules
+moved into `voice_remote/` and `test/setup_test_env.sh` became `./setup.sh`.
+
 ---
 
 ## BUG-001: Speech never plays on the TV; HDMI audio reported as not available

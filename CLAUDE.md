@@ -4,47 +4,57 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-A Raspberry Pi voice remote: the microphone on a WM8960 Audio HAT picks up voice commands, and a Raspberry Pi 5 forwards them to an LG TV connected over micro-HDMI. See `ARCHITECTURE.md` for the design. No code has been written yet.
+A Raspberry Pi 5 voice remote for an LG webOS TV (UJ635V). The WM8960 Audio HAT's mics pick up commands ("remote volume up"), Whisper transcribes them offline, and the Pi controls the TV: power over HDMI-CEC, everything else over LG webOS on Wi-Fi. See `ARCHITECTURE.md` for the design and data flow.
 
 ## Documentation rules (from the project owner)
 
-- With every change, update the matching sections of `README.md`: requirements, system packages, pip installations, build commands and usage. Replace the `_TBD_` placeholders as things become known.
+- With every change, update the matching sections of `README.md`: usage, requirements, system packages, pip installations, build commands.
 - Record design decisions in `ARCHITECTURE.md`.
-- When the owner flags a point as needing a developer note, add a row to the table in `DEVELOPER_NOTES.md`.
+- When the owner flags a point as needing a developer note, add a row to the table in `DEVELOPER_NOTES.md`. After each bug-fix branch, add a fix summary there (problem and how it was fixed).
 - `SKILLS.md` lists the roles used on the project. The primary role is embedded C developer.
 - Commit changes in small steps with clear messages.
 - Releases are annotated tags (`vX.Y.Z`), published as GitHub releases, with notes in `RELEASE.md`. Bugs found on the Pi go in `BUGS.md` (`BUG-NNN`, the version found in, status Open, then Fixed (awaiting Pi verification), then Verified). Fix them on a `bugfix/...` branch, reference the bug IDs in commit messages, and merge only after Pi verification.
+- Feature work for the next release goes on `dev` and is merged to `main` afterwards.
 
 ## Commands
 
-Run these on the Raspberry Pi, not on the Windows dev PC. This PC has no Python, so the scripts can't run here.
+Run these on the Raspberry Pi, not on the Windows dev PC. This PC has no Python, so nothing can run here; only `bash -n` syntax checks work.
 
 ```bash
-bash test/setup_test_env.sh                   # apt packages + .venv with test/requirements.txt
-bash test/mic_check.sh [seconds] [card]       # ALSA-only record/playback check of the WM8960 HAT
-bash test/hdmi_audio_check.sh [port]          # TV on HDMI? vc4hdmi card? speaker-test 2ch/48k on the TV
-source .venv/bin/activate && python test/sanity_test.py [--help]   # Whisper STT -> espeak-ng echo, with barge-in
-python test/startup_checks.py [--then "<cmd>"]                      # 4 spoken pre-launch checks, yes/no answers
-
-bash test/setup_test_env.sh --light && python3 test/light_remote.py  # keyboard -> CEC remote, no venv/Whisper
+./setup.sh [--light] [--whisper-cpp] [--with-openai]   # apt packages, .venv, whisper.cpp on armhf
+./voice-remote [--skip-checks] [--help]                # voice remote; runs until "remote exit"
+./voice-remote --keys                                  # keyboard remote (stdlib only, no venv)
+bash test/mic_check.sh [seconds] [card]                # ALSA-only HAT record/playback
+bash test/hdmi_audio_check.sh [port]                   # HDMI audio diagnostics on the TV
+.venv/bin/python test/sanity_test.py                   # Whisper -> espeak-ng echo, barge-in
 ```
 
-`tv_link.py`, `webos_link.py` and `light_remote.py` must stay standard-library-only, so the light test needs no pip packages.
+There are no automated tests. `commands.parse()` is pure and the easiest piece to unit-test if tests are added.
 
-Module layout in `test/`:
-- `tv_link.py`: TV detection (DRM status, `/proc/asound/cards`) and HDMI-CEC through `cec-ctl`.
-- `audio_output.py`: `AudioRouter`, which chooses the TV or the HAT speaker.
-- `sanity_test.py`: the shared building blocks (`add_common_args`, `build_audio`, `Mic`, `Speaker`, the VAD, barge-in) plus its own echo loop.
-- `startup_checks.py`: imports those building blocks.
-- `webos_link.py`: LG webOS network control. It has its own minimal WebSocket client, SSDP discovery and pairing, and keeps the key in `~/.config/voice_remote/lgtv.json`.
-- `light_remote.py`: the keyboard remote; uses `tv_link.py` and `webos_link.py`.
+## Code layout
 
-The LG TV ignores CEC user-control keys. Use CEC only for power, and webOS for everything else.
+The `voice_remote/` package uses relative imports. Run it from the repo root as `python -m voice_remote` (the launcher does this). `test/sanity_test.py` adds the repo root to `sys.path`.
 
-The scripts import each other as plain modules, so run them from `test/` or as `python test/<script>.py`. All speech output must go through `Speaker`, which routes via `AudioRouter`, so it follows the TV.
+- `app.py`: `VoiceRemote`. Startup (noise threshold, `TvControl.connect`, `StartupChecks`), then the `Voice.listen` → `commands.parse` → `execute` loop.
+- `keys.py`: the keyboard remote; `__main__.py` imports it alone for `--keys`, so it never loads numpy.
+- `commands.py`: wake word plus phrase table (longest match wins), numbers, apps → `Command`.
+- `tv.py`: `TvControl`. `ACTIONS` maps each action to (label, CEC code, webOS action), and `APPS` maps names to webOS app ids. webOS first, CEC fallback; power always via CEC.
+- `tv_link.py` (DRM/ALSA detection, `cec-ctl`), `webos_link.py` (own WebSocket client, SSDP, pairing key in `~/.config/voice_remote/lgtv.json`).
+- `speech.py`: `Mic`, VAD (`record_utterance`), Whisper backends, `Speaker` (espeak-ng → aplay via `AudioRouter`), `speak_with_barge_in`, `Voice` (say, then listen), `add_common_args`, `build_audio`.
+- `audio_output.py`: `AudioRouter`, TV HDMI audio when the TV is on, else the HAT speaker.
+- `startup_checks.py`: 4 spoken checks sharing the app's `Voice` and `TvControl`; `run()` returns whether to launch.
 
-`test/sanity_test.py` loop: an energy-threshold VAD (calibrated from the noise floor at startup) records an utterance, which is resampled to 16 kHz and transcribed (`--backend local|openai`). The reply plays through `aplay` while the mic keeps reading, and loud input during playback kills `aplay` and becomes the start of the next utterance. Keep "Build 101" in `README.md` in sync with any change to these scripts.
+Rules that came from bugs on the real hardware:
+- `tv_link.py`, `webos_link.py`, `tv.py`, `commands.py` and `keys.py` must stay standard-library-only (`--keys` runs without a venv).
+- The LG TV ignores CEC user-control keys (BUG-002). Use CEC only for power, and webOS for everything else.
+- All speech output goes through `Speaker`. HDMI playback must be stereo 48 kHz (BUG-001).
+- Never listen while the Pi is speaking on the HAT speaker: no echo cancellation (BUG-003/004). Use `Voice.say` (full playback, echo tail, flush) before listening. Barge-in only when output is the TV.
 
-32-bit (`armhf`) vs 64-bit (`arm64`) Pi OS matters. Detect it with `dpkg --print-architecture`, never `uname -m` (a Pi 5 reports aarch64 on both). On armhf, numpy comes from apt through a `--system-site-packages` venv, and `faster-whisper` (`test/requirements-local-whisper.txt`) can't be installed. Speech recognition there uses whisper.cpp, which `setup_test_env.sh` builds in `third_party/whisper.cpp` (gitignored). The armhf build needs both `setarch linux32` and `-latomic`, and only the `whisper-cli` target is built. `--backend auto` picks faster-whisper, then whisper.cpp. The owner doesn't want paid APIs, so `openai` stays opt-in (`--with-openai`). Keep dependencies that lack armhf wheels out of `test/requirements.txt`.
+32-bit (`armhf`) vs 64-bit (`arm64`) Pi OS matters. Detect it with `dpkg --print-architecture`, never `uname -m` (a Pi 5 reports aarch64 on both).
+- On armhf, numpy comes from apt through a `--system-site-packages` venv, and `faster-whisper` can't be installed.
+- Speech recognition there uses whisper.cpp, built by `setup.sh` in `third_party/whisper.cpp` (gitignored) with `setarch linux32` and `-latomic`, `whisper-cli` target only.
+- `--backend auto` picks faster-whisper, then whisper.cpp.
+- The owner doesn't want paid APIs, so `openai` stays opt-in (`--with-openai`).
+- Keep dependencies that lack armhf wheels out of `requirements.txt`.
 
-`.gitattributes` forces LF line endings on `*.sh` and `*.py` so the scripts run on the Pi.
+`.gitattributes` forces LF line endings on `*.sh`, `*.py` and `voice-remote` so they run on the Pi.

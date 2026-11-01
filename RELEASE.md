@@ -1,5 +1,34 @@
 # Release Notes
 
+## v0.2.0 (unreleased, branch `dev`): the voice remote app
+
+Not yet verified on the Pi; it gets tagged after verification.
+
+### Added
+- **Voice remote:** `./voice-remote` runs the startup checks, then listens until "remote
+  exit". Commands start with the wake word "remote":
+  - volume up/down (with counts), mute
+  - channel up/down, channel numbers
+  - up/down/left/right, OK, back, home
+  - play/pause/stop, power on/off
+  - open YouTube/Netflix/Prime Video/Live TV/Settings
+  - help, exit
+  Each command is shown as a message on the TV.
+- **Keyboard remote:** `./voice-remote --keys` (the former light remote), with no
+  speech stack.
+- `voice_remote/` package: `app.py`, `keys.py`, `commands.py`, `tv.py` (TvControl),
+  `speech.py`, plus the modules moved out of `test/`.
+
+### Changed
+- `test/setup_test_env.sh` is now `./setup.sh`, and the requirements files moved to
+  the repo root.
+- `test/light_remote.py` is now `./voice-remote --keys`, and `test/startup_checks.py`
+  runs as part of `./voice-remote`.
+- `test/` keeps only the hardware test tools.
+
+### Known issues
+- BUG-005: the spoken voice sounds robotic (low priority).
+
 ## v0.1.1 (2026-11-01): bug fixes from the first Pi test
 
 Merged from branch `bugfix/v0.1.0-bugs`. Fix summaries are in
