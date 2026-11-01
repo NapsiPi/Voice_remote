@@ -1,5 +1,6 @@
 # Python packages for the scripts in test/, on any Raspberry Pi OS (32- or 64-bit).
 # On 32-bit (armhf) setup_test_env.sh takes numpy from apt (python3-numpy) instead of pip.
+# Speech recognition comes from requirements-local-whisper.txt (64-bit) or whisper.cpp (built
+# by setup_test_env.sh); the paid OpenAI API is opt-in via requirements-openai.txt.
 numpy
 sounddevice      # microphone capture (needs the libportaudio2 system package)
-openai           # OpenAI Whisper API (--backend openai)

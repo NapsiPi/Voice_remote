@@ -11,8 +11,11 @@ Say "stop test" or press Ctrl+C to quit.
 
 import argparse
 import collections
+import importlib.util
 import io
+import os
 import queue
+import re
 import shutil
 import subprocess
 import sys
@@ -32,6 +35,8 @@ START_BLOCKS = 3   # consecutive loud blocks (~90 ms) that count as speech start
 BARGE_BLOCKS = 5   # consecutive loud blocks (~150 ms) that interrupt playback
 PREROLL_S = 0.3    # audio kept from before speech starts, so the first syllable isn't clipped
 EXIT_PHRASE = "stop test"
+WHISPER_CPP_DIR = Path(__file__).resolve().parent.parent / "third_party" / "whisper.cpp"
+DEFAULT_MODELS = {"local": "base.en", "whispercpp": "tiny.en"}
 
 
 def rms(block):
@@ -74,7 +79,7 @@ class LocalWhisper:
             from faster_whisper import WhisperModel
         except ImportError:
             sys.exit("faster-whisper is not installed. It needs 64-bit Raspberry Pi OS; "
-                     "on 32-bit use --backend openai (see README, Build 101).")
+                     "on 32-bit use --backend whispercpp (see README, Build 101).")
 
         print(f"Loading Whisper model '{model_size}' (the first run downloads it)...")
         self.model = WhisperModel(model_size, device="cpu", compute_type="int8")
@@ -85,11 +90,54 @@ class LocalWhisper:
         return " ".join(seg.text.strip() for seg in segments).strip()
 
 
+def whisper_cpp_binary(root):
+    """The whisper.cpp CLI built by setup_test_env.sh (named 'main' in older releases)."""
+    for name in ("whisper-cli", "main"):
+        path = Path(root) / "build" / "bin" / name
+        if path.exists():
+            return path
+    return None
+
+
+class WhisperCpp:
+    """Runs the whisper.cpp command-line tool: free, offline, and builds on 32-bit ARM."""
+
+    def __init__(self, root, model, language):
+        self.binary = whisper_cpp_binary(root)
+        if self.binary is None:
+            sys.exit(f"whisper.cpp is not built in {root}. Run test/setup_test_env.sh.")
+        self.model = Path(model) if model.endswith(".bin") else Path(root) / "models" / f"ggml-{model}.bin"
+        if not self.model.exists():
+            sys.exit(f"Model {self.model} is missing. Download it with:\n"
+                     f"  bash {root}/models/download-ggml-model.sh {model}")
+        self.language = language or "auto"
+        self.threads = str(os.cpu_count() or 4)
+        self.wav = Path(tempfile.gettempdir()) / "voice_remote_stt.wav"
+        print(f"whisper.cpp: {self.binary}, model {self.model.name}")
+
+    def transcribe(self, audio):
+        self.wav.write_bytes(to_wav_bytes(audio, WHISPER_RATE))
+        out = subprocess.run(
+            [str(self.binary), "-m", str(self.model), "-f", str(self.wav),
+             "-l", self.language, "-t", self.threads, "-nt", "-np"],
+            capture_output=True, text=True,
+        )
+        if out.returncode != 0:
+            print(f"[whisper.cpp] failed: {out.stderr.strip()[-300:]}", file=sys.stderr)
+            return ""
+        # Drop non-speech tags such as [BLANK_AUDIO] or (music).
+        text = re.sub(r"\[[^\]]*\]|\([^)]*\)", " ", " ".join(out.stdout.split()))
+        return " ".join(text.split())
+
+
 class OpenAIWhisper:
-    """Sends audio to the OpenAI Whisper API (needs OPENAI_API_KEY)."""
+    """Sends audio to the OpenAI Whisper API (paid, needs OPENAI_API_KEY)."""
 
     def __init__(self, language):
-        from openai import OpenAI
+        try:
+            from openai import OpenAI
+        except ImportError:
+            sys.exit("The openai package is not installed. Run test/setup_test_env.sh --with-openai.")
 
         self.client = OpenAI()
         self.language = language
@@ -272,10 +320,15 @@ def speak_with_barge_in(mic, speaker, text, threshold, args):
 def add_common_args(p):
     """Audio, Whisper and barge-in options shared with startup_checks.py."""
     p.add_argument("--list-devices", action="store_true", help="list audio devices and exit")
-    p.add_argument("--backend", choices=["local", "openai"], default="local",
-                   help="local = faster-whisper on the Pi (default), openai = OpenAI Whisper API")
-    p.add_argument("--model", default="base.en",
-                   help="faster-whisper model size: tiny.en, base.en, small.en, ... (default: base.en)")
+    p.add_argument("--backend", choices=["auto", "local", "whispercpp", "openai"], default="auto",
+                   help="speech recognition: local = faster-whisper (64-bit OS), whispercpp = whisper.cpp "
+                        "(works on 32-bit), openai = paid OpenAI API. auto (default) uses local if "
+                        "installed, else whispercpp")
+    p.add_argument("--model", default=None,
+                   help="Whisper model: tiny.en, base.en, small.en, ... or a ggml .bin path for whispercpp "
+                        "(default: base.en for local, tiny.en for whispercpp)")
+    p.add_argument("--whisper-cpp-dir", default=str(WHISPER_CPP_DIR),
+                   help=f"whisper.cpp checkout built by setup_test_env.sh (default: {WHISPER_CPP_DIR})")
     p.add_argument("--language", default="en", help="spoken language code (default: en)")
     p.add_argument("--input-device", default="wm8960",
                    help="input device index or part of its name (default: wm8960)")
@@ -300,13 +353,28 @@ def add_common_args(p):
                    help="seconds after a reply starts before barge-in is allowed (default: 0.4)")
 
 
+def build_transcriber(args):
+    backend = args.backend
+    if backend == "auto":
+        if importlib.util.find_spec("faster_whisper"):
+            backend = "local"
+        elif whisper_cpp_binary(args.whisper_cpp_dir):
+            backend = "whispercpp"
+        else:
+            sys.exit("No speech recognition is installed. Run test/setup_test_env.sh.")
+    print(f"Speech recognition: {backend}")
+    if backend == "openai":
+        return OpenAIWhisper(args.language)
+    model = args.model or DEFAULT_MODELS[backend]
+    if backend == "whispercpp":
+        return WhisperCpp(args.whisper_cpp_dir, model, args.language)
+    return LocalWhisper(model, args.language)
+
+
 def build_audio(args):
     """Transcriber, speaker and mic from the common options."""
     device = find_input_device(args.input_device)
-    if args.backend == "openai":
-        transcriber = OpenAIWhisper(args.language)
-    else:
-        transcriber = LocalWhisper(args.model, args.language)
+    transcriber = build_transcriber(args)
     speaker = Speaker(AudioRouter(args.output_device, args.cec), args.voice, args.speed)
     return transcriber, speaker, Mic(device, args.rate)
 

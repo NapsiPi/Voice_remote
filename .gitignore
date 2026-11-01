@@ -5,6 +5,9 @@ build/
 *.so
 *.elf
 
+# whisper.cpp checkout, build and models (setup_test_env.sh)
+third_party/
+
 # Python
 __pycache__/
 *.pyc

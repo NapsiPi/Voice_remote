@@ -34,6 +34,10 @@ Installed by `test/setup_test_env.sh`:
 | `alsa-utils` | `arecord`, `aplay`, `alsamixer` |
 | `espeak-ng` | Text-to-speech for the spoken replies |
 | `v4l-utils` | `cec-ctl`, for HDMI-CEC: TV power state and remote-control keys |
+| `git`, `cmake`, `build-essential`, `curl` | Building whisper.cpp and downloading its models (32-bit, or `--whisper-cpp`) |
+| `python3-numpy`, `python3-cffi` | 32-bit only: prebuilt instead of compiled by pip |
+
+`--light` installs only `alsa-utils` and `v4l-utils`.
 
 ### pip packages
 Installed into `.venv` by `test/setup_test_env.sh`:
@@ -42,8 +46,20 @@ Installed into `.venv` by `test/setup_test_env.sh`:
 |---------|------|-----|
 | `numpy` | `test/requirements.txt` | Audio buffers (from apt `python3-numpy` on 32-bit) |
 | `sounddevice` | `test/requirements.txt` | Microphone capture |
-| `openai` | `test/requirements.txt` | OpenAI Whisper API (`--backend openai`) |
-| `faster-whisper` | `test/requirements-local-whisper.txt` | Whisper on the Pi (default backend), **64-bit only** |
+| `faster-whisper` | `test/requirements-local-whisper.txt` | Whisper on the Pi, **64-bit only** |
+| `openai` | `test/requirements-openai.txt` | Paid OpenAI Whisper API; installed only with `--with-openai` |
+
+### Speech recognition backends
+
+| Backend | `--backend` | OS | Cost | Notes |
+|---------|-------------|----|------|-------|
+| faster-whisper | `local` | 64-bit | Free, offline | Default model `base.en` |
+| whisper.cpp | `whispercpp` | 32- and 64-bit | Free, offline | Built from source into `third_party/whisper.cpp`; default model `tiny.en`, `base.en` also downloaded |
+| OpenAI API | `openai` | any | Paid per minute | Needs `--with-openai` and `OPENAI_API_KEY` |
+
+The default `--backend auto` picks `local` if it's installed, otherwise `whispercpp`.
+Compare accuracy and speed on the Pi with `--model tiny.en` and `--model base.en`.
+Each transcription prints how long it took.
 
 ### 32-bit vs 64-bit Raspberry Pi OS
 
@@ -60,10 +76,15 @@ its kernel is 64-bit.
 |---|---|---|
 | numpy | pip wheel | apt `python3-numpy`, so pip never compiles it |
 | Local Whisper (`faster-whisper`) | Yes (default) | **Not available**: `ctranslate2`/`onnxruntime` have no 32-bit ARM builds |
-| Speech recognition | Offline on the Pi | `--backend openai` with `OPENAI_API_KEY` (needs internet) |
+| Speech recognition | faster-whisper, offline | **whisper.cpp**, offline and free (built from source, a few minutes on a Pi 5) |
 
 `setup_test_env.sh` detects the architecture and installs the right set. It also
-needs Python 3.10 or newer, which Bookworm provides.
+needs Python 3.10 or newer, which Bookworm provides. On 32-bit it finishes with a
+whisper.cpp smoke test on the bundled `samples/jfk.wav` and prints the time taken.
+
+If whisper.cpp fails to build on 32-bit, try a release tag instead of `master`:
+`WHISPER_CPP_REF=<tag> bash test/setup_test_env.sh` (tags are listed at
+https://github.com/ggml-org/whisper.cpp/tags).
 
 ## Build 101 (getting started)
 
@@ -150,8 +171,9 @@ Useful options (`python test/sanity_test.py --help` lists all):
 | `--list-devices` | Show audio devices and their numbers |
 | `--output-device plughw:<card>,0` | Always play replies on this device (default: automatic, TV or HAT) |
 | `--no-cec` | Don't query the TV's power over HDMI-CEC |
-| `--model tiny.en` | Faster, less accurate Whisper model (default `base.en`) |
-| `--backend openai` | Use the OpenAI Whisper API; needs `export OPENAI_API_KEY=...` |
+| `--backend whispercpp` | Force whisper.cpp (automatic on 32-bit) |
+| `--model tiny.en` / `base.en` | Smaller is faster, larger is more accurate |
+| `--backend openai` | Paid OpenAI Whisper API; needs `--with-openai` setup and `OPENAI_API_KEY` |
 | `--threshold-factor 4` | Less sensitive to background noise |
 | `--no-barge-in` / `--barge-in-factor 3` | Stop the reply interrupting itself |
 

@@ -1,0 +1,2 @@
+# Paid OpenAI Whisper API (--backend openai). Installed only with setup_test_env.sh --with-openai.
+openai
