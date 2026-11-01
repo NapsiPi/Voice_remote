@@ -1,0 +1,3 @@
+# Scripts run on the Raspberry Pi: always keep Linux line endings.
+*.sh  text eol=lf
+*.py  text eol=lf

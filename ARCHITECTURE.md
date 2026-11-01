@@ -39,3 +39,7 @@ _TBD_
 ## Design decisions
 
 _Each decision is recorded here when it is made._
+
+| # | Date | Decision |
+|---|------|----------|
+| 1 | 2026-11-01 | Hardware bring-up uses a Python sanity test (`test/sanity_test.py`): Whisper speech-to-text (local `faster-whisper` by default, OpenAI Whisper API optional), `espeak-ng` text-to-speech, and energy-based voice detection with barge-in. This only proves the audio path works; the language for the remote itself is not decided yet. |
