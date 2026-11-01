@@ -218,7 +218,8 @@ Useful options (`python test/sanity_test.py --help` lists all):
 | `--model tiny.en` / `base.en` | Smaller is faster, larger is more accurate |
 | `--backend openai` | Paid OpenAI Whisper API; needs `--with-openai` setup and `OPENAI_API_KEY` |
 | `--threshold-factor 4` | Less sensitive to background noise |
-| `--no-barge-in` / `--barge-in-factor 3` | Stop the reply interrupting itself |
+| `--barge-in auto\|on\|off` | Talking interrupts replies. `auto` (default) enables it only when audio plays on the TV, because the HAT speaker is too close to the mics |
+| `--barge-in-factor 3` | Barge-in needs louder speech |
 
 The first local run downloads the Whisper model, so it needs internet once.
 
@@ -231,7 +232,8 @@ python test/startup_checks.py --then "<command>"    # then start the voice remot
 ```
 
 The Pi talks you through four checks. **Answer each question by saying "yes" or
-"no"**; you can answer while it is still speaking. It speaks on the TV when the TV is
+"no" after it finishes speaking.** The log shows `[listening] say yes or no` when
+it's ready. It waits 8 s and asks up to three times. It speaks on the TV when the TV is
 on, otherwise on the HAT speaker.
 
 **What you will hear:**
@@ -260,7 +262,7 @@ asks whether to launch anyway.
 |---------|-----|
 | `No input device matching 'wm8960'` | Card not loaded: redo step 1, or pick a device from `--list-devices` |
 | It never starts listening | Mic too quiet: raise capture in `alsamixer`, or lower `--threshold-factor` |
-| The reply interrupts itself | The HAT speaker is picked up by its own mics: use headphones, or raise `--barge-in-factor` |
+| The reply interrupts itself, `aplay: ... Interrupted system call` | Barge-in stopped playback because the mics heard the HAT speaker. `--barge-in auto` (default) now keeps barge-in off on the HAT speaker; with `--barge-in on`, raise `--barge-in-factor` |
 | Whisper prints text you didn't say on silence | Known Whisper behaviour on noise; raise `--threshold-factor` |
 | Audio stays on the HAT with the TV on | Run `bash test/hdmi_audio_check.sh` (TV seen? HDMI audio card present? test sound plays?). Check `[audio] Output -> ...` in the log for the reason; enable SIMPLINK on the TV, or try `--no-cec` |
 | No `vc4hdmi` card in `/proc/asound/cards` | Remove `,noaudio` from `dtoverlay=vc4-kms-v3d` in `/boot/firmware/config.txt` and reboot |

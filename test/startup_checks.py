@@ -23,13 +23,14 @@ import sounddevice as sd
 
 from sanity_test import (
     BLOCK_MS, WHISPER_RATE, add_common_args, build_audio, calibrate, normalise,
-    record_utterance, resample, rms, speak_with_barge_in, to_wav_bytes,
+    record_utterance, resample, rms, to_wav_bytes,
 )
 from tv_link import UI_VOLUME_DOWN, UI_VOLUME_UP
 
-YES = {"yes", "yeah", "yep", "yup", "correct", "right", "sure", "ok", "okay"}
+YES = {"yes", "yeah", "yep", "yup", "yah", "yeh", "correct", "right", "sure", "ok", "okay"}
 NO = {"no", "nope", "nah", "wrong", "incorrect"}
 ANSWER_WAIT_S = 8
+ECHO_TAIL_S = 0.4  # let the room go quiet after we speak before listening (BUG-003)
 TV_ON = (None, "on", "to-on")
 
 INTRO = ("Welcome to the voice remote. Before it starts, we will run four quick checks: "
@@ -57,6 +58,7 @@ class StartupChecks:
         print(f"[say] {text}")
         self.speaker.start(text)
         self.speaker.wait()
+        time.sleep(ECHO_TAIL_S)
         self.mic.flush()  # drop our own voice picked up by the mics
 
     def listen(self, preroll=(), wait_s=ANSWER_WAIT_S):
@@ -68,13 +70,15 @@ class StartupChecks:
         print(f"[heard] {text!r}")
         return text
 
-    def ask_yes_no(self, question, attempts=2):
-        """Ask a question; True for yes, False for no or no clear answer.
-        Answering over the question (barge-in) works too."""
-        for _ in range(attempts):
-            print(f"[ask] {question}")
-            preroll = speak_with_barge_in(self.mic, self.speaker, question, self.threshold, self.args) or []
-            words = set(normalise(self.listen(preroll)).split())
+    def ask_yes_no(self, question, attempts=3):
+        """Ask a question, then listen; True for yes, False for no or no clear answer.
+
+        The whole question is spoken before listening (no barge-in): otherwise the Pi's
+        own voice from the speaker was taken as the answer (BUG-003)."""
+        for attempt in range(1, attempts + 1):
+            self.say(question)
+            print(f"[listening] say yes or no (attempt {attempt}/{attempts}, {ANSWER_WAIT_S}s)...")
+            words = set(normalise(self.listen()).split())
             if words & YES and not words & NO:
                 return True
             if words & NO and not words & YES:

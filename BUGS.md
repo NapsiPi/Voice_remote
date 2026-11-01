@@ -4,8 +4,8 @@
 |----|-------|----------|----------|--------|
 | BUG-001 | Speech never plays on the TV; HDMI audio reported as not available | v0.1.0 | High | Fixed (awaiting Pi verification) |
 | BUG-002 | CEC volume up/down has no effect on the LG TV (light remote) | v0.1.0 | Medium | Open |
-| BUG-003 | Startup checks don't wait for the spoken yes/no answer, so the voice app never starts | v0.1.0 | High | Open |
-| BUG-004 | Barge-in triggers incorrectly | v0.1.0 | Medium | Open |
+| BUG-003 | Startup checks don't wait for the spoken yes/no answer, so the voice app never starts | v0.1.0 | High | Fixed (awaiting Pi verification) |
+| BUG-004 | Barge-in triggers incorrectly; aplay "Interrupted system call" breaks speaker audio | v0.1.0 | Medium | Fixed (awaiting Pi verification) |
 
 Statuses: Open, then Fixed (awaiting Pi verification), then Verified. A bug is closed
 only after it is verified on the Pi.
@@ -59,12 +59,28 @@ only after it is verified on the Pi.
 - **Fix plan:** ask the question first, then listen (no barge-in during yes/no
   questions). Wait for the echo to die down. Pad short recordings for whisper.cpp.
   Log what was heard on every attempt.
+- **Fix (branch `bugfix/v0.1.0-bugs`):** `ask_yes_no` speaks the whole question, waits
+  0.4 s for the echo to fade, flushes the mic, then listens for up to 8 s. It logs
+  `[listening] say yes or no (attempt n/3)`, and every `[heard]` result is printed.
+  It retries up to three times. `WhisperCpp` pads recordings shorter than 1.5 s.
+- **Verify on the Pi:** in `startup_checks.py`, each question waits for your answer, and
+  saying "yes" passes the check.
 
-## BUG-004: Barge-in triggers incorrectly
+## BUG-004: Barge-in triggers incorrectly; aplay "Interrupted system call" breaks speaker audio
 - **Found in:** v0.1.0
 - **Symptom:** barge-in doesn't behave correctly: playback stops without the user
-  talking, or doesn't stop when they do.
-- **Likely cause:** there is no echo cancellation, so with the HAT speaker a few cm
-  from the mics, the Pi's own voice exceeds the barge-in threshold.
-- **Fix plan:** barge-in defaults to `auto`: on when output is the TV, off on the HAT
-  speaker. `--barge-in on|off` overrides it.
+  talking. The owner saw `aplay` "Interrupted system call" errors and broken speaker
+  audio in the sanity test. Their first suspicion was that the PCM input and output
+  buffers were clashing.
+- **Cause:** not a buffer conflict (the WM8960 records and plays at the same time).
+  There is no echo cancellation, so the HAT speaker's sound, a few cm from the mics,
+  exceeded the barge-in threshold. Barge-in then fired on the Pi's own voice, and
+  `Speaker.stop()` killed `aplay` mid-write. `aplay` reports that as "Interrupted
+  system call", and the reply is cut off. This repeated on every reply.
+- **Fix (branch `bugfix/v0.1.0-bugs`):** `--barge-in auto|on|off` replaces
+  `--no-barge-in`. `auto` (default) enables barge-in only when audio plays on the TV.
+  `Speaker.stop()` drops the expected `aplay` error after an intentional stop. Real
+  `aplay` errors are still printed as `[audio] aplay: ...`.
+- **Verify on the Pi:** `python test/sanity_test.py` with audio on the HAT: replies play
+  to the end with no "Interrupted system call". With audio on the TV, talking over a
+  reply stops it.

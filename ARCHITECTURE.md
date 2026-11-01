@@ -51,7 +51,14 @@ text in its reason.
 Runs before the voice remote: mic loopback, TV connection, speech recognition and TV
 control (CEC volume up/down). Each check is confirmed by a spoken yes/no, transcribed
 by Whisper. `--then` starts the remote afterwards. It reuses the sanity test's
-building blocks (`build_audio`, `record_utterance`, `speak_with_barge_in`).
+building blocks (`build_audio`, `record_utterance`). Yes/no questions are spoken in
+full, then a 0.4 s echo tail passes before it listens. There's no barge-in during
+questions.
+
+Barge-in (`sanity_test.speak_with_barge_in`) defaults to `auto`: it's enabled only
+when output is the TV. There's no acoustic echo cancellation, and the HAT speaker
+next to the mics would trigger it on the Pi's own voice. Stopping playback kills
+`aplay`, whose expected "Interrupted system call" message is suppressed.
 
 ### 6. Light keyboard remote (`test/light_remote.py`)
 Uses only the standard library plus `cec-ctl`/`arecord`/`aplay`, with no speech
