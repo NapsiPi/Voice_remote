@@ -3,7 +3,7 @@
 | ID | Title | Found in | Severity | Status |
 |----|-------|----------|----------|--------|
 | BUG-001 | Speech never plays on the TV; HDMI audio reported as not available | v0.1.0 | High | Fixed (awaiting Pi verification) |
-| BUG-002 | CEC volume up/down has no effect on the LG TV (light remote) | v0.1.0 | Medium | Open: diagnostics added, needs Pi output |
+| BUG-002 | CEC volume up/down has no effect on the LG TV (light remote) | v0.1.0 | Medium | Open: cause confirmed, fix planned (LG webOS network control) |
 | BUG-003 | Startup checks don't wait for the spoken yes/no answer, so the voice app never starts | v0.1.0 | High | Fixed (awaiting Pi verification) |
 | BUG-004 | Barge-in triggers incorrectly; aplay "Interrupted system call" breaks speaker audio | v0.1.0 | Medium | Fixed (awaiting Pi verification) |
 | BUG-005 | Spoken replies sound robotic | v0.1.0 | Low | Open |
@@ -57,6 +57,19 @@ only after it is verified on the Pi.
   - `sent` with no reply: the TV silently ignores it. LG TVs often take volume only
     from an audio system. The fallback would then be LG's network control API (webOS)
     over Wi-Fi/Ethernet.
+- **Finding (Pi test, `cec-ctl -M`):** for every key (volume, arrows, ...) the only
+  message from the TV is `DEVICE_VENDOR_ID (0x87)` broadcast, vendor `0x00E091` (LG).
+  There's no `FEATURE_ABORT` and no other reply. Power on/standby works, so the CEC
+  link is fine.
+- **Cause (confirmed):** the LG TV takes the user-control messages but silently ignores
+  them from a playback device. This is a limit of LG's SIMPLINK, not a Pi bug.
+- **Planned fix:** keep CEC for power on/standby. Send volume, mute, channel and
+  navigation through LG's webOS network control (local network, one-time pairing
+  prompt on the TV). Needs: confirmation the TV runs webOS, and the TV on the same
+  network as the Pi.
+- **Optional experiment:** register with LG's vendor ID
+  (`cec-ctl --playback --vendor-id 0x00e091`, if this cec-ctl supports it) and retry
+  volume. Low odds.
 
 ## BUG-003: Startup checks don't wait for the spoken yes/no answer, so the voice app never starts
 - **Found in:** v0.1.0, `test/startup_checks.py`
