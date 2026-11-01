@@ -452,3 +452,32 @@ def transcribe(transcriber, mic, audio):
     text = transcriber.transcribe(resample(audio, mic.rate, WHISPER_RATE))
     print(f"[heard] {text!r}  ({len(audio) / mic.rate:.1f}s audio, {time.monotonic() - t0:.1f}s to transcribe)")
     return text
+
+
+ECHO_TAIL_S = 0.4  # let the room go quiet after speaking before listening (BUG-003)
+
+
+class Voice:
+    """Speak, then listen, without the Pi hearing itself (BUG-003)."""
+
+    def __init__(self, transcriber, speaker, mic, threshold, args):
+        self.transcriber = transcriber
+        self.speaker = speaker
+        self.mic = mic
+        self.threshold = threshold
+        self.args = args
+
+    def say(self, text):
+        print(f"[say] {text}")
+        self.speaker.start(text)
+        self.speaker.wait()
+        time.sleep(ECHO_TAIL_S)
+        self.mic.flush()  # drop our own voice picked up by the mics
+
+    def listen(self, wait_s=None):
+        """Transcribed text of the next utterance; "" if nobody spoke within wait_s."""
+        audio = record_utterance(self.mic, self.threshold, self.args, [], wait_s)
+        if audio is None:
+            print("[heard] (nothing)")
+            return ""
+        return transcribe(self.transcriber, self.mic, audio)
