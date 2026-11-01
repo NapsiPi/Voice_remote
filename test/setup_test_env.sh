@@ -13,7 +13,8 @@ sudo apt-get install -y \
     python3-venv python3-dev \
     libportaudio2 portaudio19-dev \
     alsa-utils \
-    espeak-ng
+    espeak-ng \
+    v4l-utils
 
 echo "== Creating Python virtual environment at $VENV =="
 python3 -m venv "$VENV"

@@ -3,7 +3,8 @@
 
 Captures speech from the WM8960 microphones, transcribes it with Whisper (STT) and
 reads the text back with espeak-ng (TTS). Talking over the reply interrupts it
-(barge-in) and the new speech is transcribed instead.
+(barge-in) and the new speech is transcribed instead. Replies play on the TV when
+it is connected and on, otherwise on the HAT speaker (see audio_output.py).
 
 Say "stop test" or press Ctrl+C to quit.
 """
@@ -22,6 +23,8 @@ from pathlib import Path
 
 import numpy as np
 import sounddevice as sd
+
+from audio_output import AudioRouter
 
 WHISPER_RATE = 16000
 BLOCK_MS = 30
@@ -136,13 +139,14 @@ class Mic:
 
 
 class Speaker:
-    """espeak-ng renders the reply to a WAV file and aplay plays it in the background."""
+    """espeak-ng renders speech to a WAV file and aplay plays it in the background,
+    on whichever output the router picks (TV or HAT speaker)."""
 
-    def __init__(self, output_device, voice, speed):
+    def __init__(self, router, voice, speed):
         for tool in ("espeak-ng", "aplay"):
             if not shutil.which(tool):
                 sys.exit(f"'{tool}' not found. Run test/setup_test_env.sh first.")
-        self.output_device = output_device
+        self.router = router
         self.voice = voice
         self.speed = speed
         self.wav = Path(tempfile.gettempdir()) / "voice_remote_tts.wav"
@@ -153,11 +157,26 @@ class Speaker:
             ["espeak-ng", "-v", self.voice, "-s", str(self.speed), "-w", str(self.wav), text],
             check=True,
         )
+        self.play(self.wav)
+
+    def play(self, wav):
+        output = self.router.current()
+        self.proc = self._aplay(output.device, wav)
+        if output.name == "tv":
+            # HDMI audio can be missing even with the TV on; fall back to the HAT if aplay dies.
+            time.sleep(0.3)
+            if self.proc.poll() not in (None, 0):
+                print("[audio] TV HDMI audio failed, switching to the HAT speaker")
+                self.router.tv_failed()
+                self.proc = self._aplay(self.router.current().device, wav)
+
+    @staticmethod
+    def _aplay(device, wav):
         cmd = ["aplay", "-q"]
-        if self.output_device:
-            cmd += ["-D", self.output_device]
-        cmd.append(str(self.wav))
-        self.proc = subprocess.Popen(cmd)
+        if device:
+            cmd += ["-D", device]
+        cmd.append(str(wav))
+        return subprocess.Popen(cmd)
 
     def playing(self):
         return self.proc is not None and self.proc.poll() is None
@@ -192,17 +211,20 @@ def calibrate(mic, seconds):
     return float(np.median(levels))
 
 
-def record_utterance(mic, threshold, args, preroll):
+def record_utterance(mic, threshold, args, preroll, wait_s=None):
     """Wait for speech, then record until the speaker goes quiet.
 
     preroll holds blocks already known to be speech (from a barge-in); when given,
-    recording starts straight away.
+    recording starts straight away. Returns None if nobody speaks within wait_s.
     """
     frames = list(preroll)
     if not frames:
         history = collections.deque(maxlen=int(PREROLL_S * 1000 / BLOCK_MS))
         loud_run = 0
+        deadline = None if wait_s is None else time.monotonic() + wait_s
         while loud_run < START_BLOCKS:
+            if deadline is not None and time.monotonic() > deadline:
+                return None
             block = mic.read()
             history.append(block)
             loud_run = loud_run + 1 if rms(block) > threshold else 0
@@ -243,8 +265,8 @@ def speak_with_barge_in(mic, speaker, text, threshold, args):
     return None
 
 
-def parse_args():
-    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+def add_common_args(p):
+    """Audio, Whisper and barge-in options shared with startup_checks.py."""
     p.add_argument("--list-devices", action="store_true", help="list audio devices and exit")
     p.add_argument("--backend", choices=["local", "openai"], default="local",
                    help="local = faster-whisper on the Pi (default), openai = OpenAI Whisper API")
@@ -254,7 +276,10 @@ def parse_args():
     p.add_argument("--input-device", default="wm8960",
                    help="input device index or part of its name (default: wm8960)")
     p.add_argument("--output-device", default=None,
-                   help="ALSA device for replies, e.g. plughw:wm8960soundcard (default: system default)")
+                   help="fixed ALSA device for speech, e.g. plughw:CARD=wm8960soundcard,DEV=0 "
+                        "(default: automatic, TV when connected and on, else the HAT speaker)")
+    p.add_argument("--no-cec", dest="cec", action="store_false",
+                   help="don't ask the TV for its power state over HDMI-CEC; a connected TV counts as on")
     p.add_argument("--rate", type=int, default=None, help="capture sample rate (default: device default)")
     p.add_argument("--voice", default="en", help="espeak-ng voice (default: en)")
     p.add_argument("--speed", type=int, default=165, help="espeak-ng words per minute (default: 165)")
@@ -269,22 +294,28 @@ def parse_args():
                    help="barge-in needs speech this many times louder than the speech threshold (default: 2.0)")
     p.add_argument("--barge-in-delay", type=float, default=0.4,
                    help="seconds after a reply starts before barge-in is allowed (default: 0.4)")
-    return p.parse_args()
 
 
-def main():
-    args = parse_args()
-    if args.list_devices:
-        print(sd.query_devices())
-        return
-
+def build_audio(args):
+    """Transcriber, speaker and mic from the common options."""
     device = find_input_device(args.input_device)
     if args.backend == "openai":
         transcriber = OpenAIWhisper(args.language)
     else:
         transcriber = LocalWhisper(args.model, args.language)
-    speaker = Speaker(args.output_device, args.voice, args.speed)
-    mic = Mic(device, args.rate)
+    speaker = Speaker(AudioRouter(args.output_device, args.cec), args.voice, args.speed)
+    return transcriber, speaker, Mic(device, args.rate)
+
+
+def main():
+    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    add_common_args(p)
+    args = p.parse_args()
+    if args.list_devices:
+        print(sd.query_devices())
+        return
+
+    transcriber, speaker, mic = build_audio(args)
 
     try:
         with mic.stream:

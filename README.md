@@ -33,6 +33,7 @@ Installed by `test/setup_test_env.sh`:
 | `libportaudio2`, `portaudio19-dev` | Audio capture backend for `sounddevice` |
 | `alsa-utils` | `arecord`, `aplay`, `alsamixer` |
 | `espeak-ng` | Text-to-speech for the spoken replies |
+| `v4l-utils` | `cec-ctl`, for HDMI-CEC: TV power state and remote-control keys |
 
 ### pip packages
 From `test/requirements.txt`, installed into `.venv`:
@@ -64,6 +65,22 @@ arecord -l    # expect a "wm8960" card
 
 If no `wm8960` card appears, install the vendor driver instead:
 https://github.com/waveshare/WM8960-Audio-HAT
+
+### Where the sound comes out
+
+The HAT's microphones are always the input. Speech output is chosen automatically
+and re-checked every 10 seconds:
+
+| TV state | Audio plays on |
+|----------|----------------|
+| Connected on HDMI and on | TV speakers (HDMI audio) |
+| Connected but in standby | HAT speaker |
+| Not connected, or its HDMI audio fails | HAT speaker |
+
+"On" comes from asking the TV over HDMI-CEC. On the LG TV, enable **SIMPLINK
+(HDMI-CEC)** in the TV settings. If the TV doesn't answer CEC, a connected TV counts
+as on. Pass `--no-cec` to skip the CEC query, or `--output-device <alsa-device>` to
+fix the output.
 
 ### 2. Get the code and install prerequisites
 
@@ -108,7 +125,8 @@ Useful options (`python test/sanity_test.py --help` lists all):
 | Option | Use |
 |--------|-----|
 | `--list-devices` | Show audio devices and their numbers |
-| `--output-device plughw:<card>,0` | Play replies through the HAT (default: system default, which may be HDMI) |
+| `--output-device plughw:<card>,0` | Always play replies on this device (default: automatic, TV or HAT) |
+| `--no-cec` | Don't query the TV's power over HDMI-CEC |
 | `--model tiny.en` | Faster, less accurate Whisper model (default `base.en`) |
 | `--backend openai` | Use the OpenAI Whisper API; needs `export OPENAI_API_KEY=...` |
 | `--threshold-factor 4` | Less sensitive to background noise |
@@ -124,6 +142,8 @@ The first local run downloads the Whisper model, so it needs internet once.
 | It never starts listening | Mic too quiet: raise capture in `alsamixer`, or lower `--threshold-factor` |
 | The reply interrupts itself | The HAT speaker is picked up by its own mics: use headphones, or raise `--barge-in-factor` |
 | Whisper prints text you didn't say on silence | Known Whisper behaviour on noise; raise `--threshold-factor` |
+| Audio stays on the HAT with the TV on | Check `[audio] Output -> ...` in the log for the reason; enable SIMPLINK on the TV, or try `--no-cec` |
+| `aplay: ... Device or resource busy` | Another sound server (e.g. PipeWire on the desktop image) holds the device; run from the Lite image or stop it |
 
 ## Usage
 
