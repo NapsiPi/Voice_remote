@@ -4,7 +4,7 @@
 |----|-------|----------|----------|--------|
 | BUG-001 | Speech never plays on the TV; HDMI audio reported as not available | v0.1.0 | High | Fixed (awaiting Pi verification) |
 | BUG-002 | CEC volume up/down has no effect on the LG TV (light remote) | v0.1.0 | Medium | Fixed (awaiting Pi verification): keys via webOS |
-| BUG-003 | Startup checks don't wait for the spoken yes/no answer, so the voice app never starts | v0.1.0 | High | Fixed (awaiting Pi verification) |
+| BUG-003 | Startup checks don't wait for the spoken yes/no answer, so the voice app never starts | v0.1.0 | High | Verified (checks 1 and 3 pass on the Pi) |
 | BUG-004 | Barge-in triggers incorrectly; aplay "Interrupted system call" breaks speaker audio | v0.1.0 | Medium | Fixed (awaiting Pi verification) |
 | BUG-005 | Spoken replies sound robotic | v0.1.0 | Low | Open |
 
