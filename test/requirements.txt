@@ -1,0 +1,5 @@
+# Python packages for test/sanity_test.py
+numpy
+sounddevice      # microphone capture (needs the libportaudio2 system package)
+faster-whisper   # local Whisper speech-to-text (default backend)
+openai           # OpenAI Whisper API (only for --backend openai)
