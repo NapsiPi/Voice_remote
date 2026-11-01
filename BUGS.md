@@ -6,6 +6,7 @@
 | BUG-002 | CEC volume up/down has no effect on the LG TV (light remote) | v0.1.0 | Medium | Open: diagnostics added, needs Pi output |
 | BUG-003 | Startup checks don't wait for the spoken yes/no answer, so the voice app never starts | v0.1.0 | High | Fixed (awaiting Pi verification) |
 | BUG-004 | Barge-in triggers incorrectly; aplay "Interrupted system call" breaks speaker audio | v0.1.0 | Medium | Fixed (awaiting Pi verification) |
+| BUG-005 | Spoken replies sound robotic | v0.1.0 | Low | Open |
 
 Statuses: Open, then Fixed (awaiting Pi verification), then Verified. A bug is closed
 only after it is verified on the Pi.
@@ -95,3 +96,15 @@ only after it is verified on the Pi.
 - **Verify on the Pi:** `python test/sanity_test.py` with audio on the HAT: replies play
   to the end with no "Interrupted system call". With audio on the TV, talking over a
   reply stops it.
+
+## BUG-005: Spoken replies sound robotic
+- **Found in:** v0.1.0
+- **Symptom:** the owner finds the Pi's voice (prompts, replies, startup checks) robotic.
+- **Cause:** text-to-speech is `espeak-ng`, which is a formant synthesizer: fast and
+  light, but it sounds artificial by design.
+- **Planned fix:** replace or offer an alternative to espeak-ng in `Speaker`, using one of:
+  - **Piper:** neural TTS that runs offline and sounds much more natural. Check that
+    it runs on 32-bit Pi OS (armhf) and is fast enough on the Pi 5.
+  - **Pico (`pico2wave`):** lighter and less robotic than espeak-ng, though less
+    natural than Piper.
+  Keep espeak-ng as the fallback when neither is installed.
