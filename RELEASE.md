@@ -1,5 +1,25 @@
 # Release Notes
 
+## v0.1.1 (2026-11-01): bug fixes from the first Pi test
+
+Merged from branch `bugfix/v0.1.0-bugs`. Fix summaries are in
+[DEVELOPER_NOTES.md](DEVELOPER_NOTES.md#bug-fix-summary-bugfixv010-bugs-v010-to-v011);
+full details are in [BUGS.md](BUGS.md).
+
+### Fixed (verified on the Pi)
+- **BUG-001** Speech now plays on the TV: audio is converted to stereo 48 kHz for HDMI.
+- **BUG-002** TV volume and navigation work: they go over LG webOS on Wi-Fi, and CEC keeps power.
+- **BUG-003** Startup checks wait for your spoken yes/no answer.
+- **BUG-004** Barge-in no longer cuts replies on the HAT speaker (`--barge-in auto`).
+
+### Added
+- `test/hdmi_audio_check.sh`: HDMI audio diagnostics
+- `test/webos_link.py`: LG webOS control (standard library only)
+- Light remote: `--tv-ip`, `--no-webos`, `--webos-debug`, `--cec-debug`
+
+### Known issues
+- BUG-005: the spoken voice sounds robotic (low priority).
+
 ## v0.1.0 (2026-11-01): first hardware bring-up
 
 First tagged release: test tooling to bring up the Raspberry Pi 5, the WM8960 Audio

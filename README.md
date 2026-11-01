@@ -4,8 +4,10 @@ A Raspberry Pi voice remote for a TV. A microphone on an audio HAT picks up spok
 commands, the Pi recognises them, and the matching control command goes to the TV
 over the micro-HDMI connection.
 
-> Status: hardware bring-up. A sanity test for the microphone HAT is available
-> (see [Build 101](#build-101-getting-started)); the remote itself is not written yet.
+> Status: **v0.1.1**. Hardware bring-up is complete and verified on the Pi: HAT mic,
+> TV audio over HDMI, TV power over CEC, and TV control over webOS. The test tools are
+> in [Build 101](#build-101-getting-started). Release history is in
+> [RELEASE.md](RELEASE.md), and open bugs are in [BUGS.md](BUGS.md).
 
 ## Requirements
 
